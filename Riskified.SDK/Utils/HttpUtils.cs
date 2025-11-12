@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Riskified.SDK.Exceptions;
+using Riskified.SDK.Http;
 using Riskified.SDK.Logging;
 
 namespace Riskified.SDK.Utils
@@ -26,12 +30,63 @@ namespace Riskified.SDK.Utils
         private const int ServerApiVersion = 2;
 
         private static readonly string AssemblyVersion;
+        private static readonly Lazy<HttpClient> DefaultHttpClient = new Lazy<HttpClient>(() =>
+        {
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+            var client = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+            return client;
+        });
 
         static HttpUtils()
         {
             // Extracting the product version for later use
             AssemblyVersion = typeof (HttpUtils).Assembly.GetName().Version.ToString();
         }
+
+        #region Modern Async Methods (HttpClient-based)
+
+        /// <summary>
+        /// Sends an HTTP Post request asynchronously with JSON-serialized data
+        /// Modern async replacement for JsonPostAndParseResponseToObject
+        /// </summary>
+        public static async Task JsonPostAndParseResponseToObjectAsync<TReqObj>(
+            Uri riskifiedWebhookUrl,
+            TReqObj jsonObj,
+            string authToken,
+            string shopDomain,
+            HttpClient httpClient = null,
+            CancellationToken cancellationToken = default)
+            where TReqObj : class
+        {
+            var client = new RiskifiedHttpClient(httpClient ?? DefaultHttpClient.Value);
+            await client.PostJsonAsync(riskifiedWebhookUrl, jsonObj, authToken, shopDomain, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends an HTTP Post request asynchronously with JSON-serialized data and returns typed response
+        /// Modern async replacement for JsonPostAndParseResponseToObject<TRespObj,TReqObj>
+        /// </summary>
+        public static async Task<TRespObj> JsonPostAndParseResponseToObjectAsync<TRespObj, TReqObj>(
+            Uri riskifiedWebhookUrl,
+            TReqObj jsonObj,
+            string authToken,
+            string shopDomain,
+            HttpClient httpClient = null,
+            CancellationToken cancellationToken = default)
+            where TRespObj : class
+            where TReqObj : class
+        {
+            var client = new RiskifiedHttpClient(httpClient ?? DefaultHttpClient.Value);
+            return await client.PostJsonAsync<TReqObj, TRespObj>(riskifiedWebhookUrl, jsonObj, authToken, shopDomain, cancellationToken).ConfigureAwait(false);
+        }
+
+        #endregion
 
         /// <summary>
         /// Sends an HTTP Post request with the json-serialized data of jsonObj as body to the received url (Riskified server),
