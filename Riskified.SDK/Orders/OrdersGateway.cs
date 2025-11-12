@@ -1,735 +1,136 @@
-﻿using System;
-using System.Linq;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
-using Riskified.SDK.Exceptions;
-using Riskified.SDK.Model;
-using Riskified.SDK.Utils;
-using Riskified.SDK.Model.AccountActionElements;
+using System;
 using System.Collections.Generic;
-using Riskified.SDK.Model.Internal;
+using Microsoft.Extensions.Options;
+using System.Net.Http;
+using Riskified.SDK.Clients;
+using Riskified.SDK.Model;
+using Riskified.SDK.Model.AccountActionElements;
 using Riskified.SDK.Model.OrderElements;
 using Riskified.SDK.Model.OtpElements;
+using Riskified.SDK.Utils;
 
 namespace Riskified.SDK.Orders
 {
     /// <summary>
-    /// Main class to handle order creation and submittion to Riskified Servers
+    /// Legacy gateway class for backward compatibility.
+    /// Use specialized clients instead: OrdersClient, CheckoutClient, AccountClient, DecoClient, OtpClient
     /// </summary>
+    [Obsolete("Use OrdersClient, CheckoutClient, AccountClient, DecoClient, or OtpClient instead for better separation of concerns. OrdersGateway will be removed in v6.0.")]
     public class OrdersGateway
     {
-        private readonly RiskifiedEnvironment _env;
-        private readonly string _authToken;
-        private readonly string _shopDomain;
-        private readonly Validations _validationMode;
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IServiceProvider _serviceProvider;
+        private readonly OrdersClient _ordersClient;
+        private readonly CheckoutClient _checkoutClient;
+        private readonly AccountClient _accountClient;
+        private readonly DecoClient _decoClient;
+        private readonly OtpClient _otpClient;
 
-        /// <summary>
-        /// Creates OrdersGateway from IOptions (for dependency injection)
-        /// Recommended for ASP.NET Core and modern .NET applications
-        /// </summary>
-        /// <param name="options">Riskified configuration options</param>
-        /// <param name="httpClientFactory">Optional IHttpClientFactory for HttpClient management. If not provided, a default instance will be created.</param>
-        public OrdersGateway(
-            IOptions<RiskifiedOptions> options,
-            IHttpClientFactory httpClientFactory = null)
-            : this(
-                options?.Value?.Environment ?? throw new ArgumentNullException(nameof(options)),
-                options.Value.MerchantAuthenticationToken ?? throw new ArgumentException("MerchantAuthenticationToken is required", nameof(options)),
-                options.Value.MerchantDomain ?? throw new ArgumentException("MerchantDomain is required", nameof(options)),
-                options.Value.ValidationMode,
-                httpClientFactory)
+        public OrdersGateway(IOptions<RiskifiedOptions> options, IHttpClientFactory httpClientFactory = null)
         {
+            _ordersClient = new OrdersClient(options, httpClientFactory);
+            _checkoutClient = new CheckoutClient(options, httpClientFactory);
+            _accountClient = new AccountClient(options, httpClientFactory);
+            _decoClient = new DecoClient(options, httpClientFactory);
+            _otpClient = new OtpClient(options, httpClientFactory);
         }
 
-        /// <summary>
-        /// Creates the mediator class used to send order data to Riskified
-        /// </summary>
-        /// <param name="env">The Riskified environment to send to</param>
-        /// <param name="authToken">The merchant's auth token</param>
-        /// <param name="shopDomain">The merchant's shop domain</param>
         public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain)
-            : this(env, authToken, shopDomain, Validations.All, null)
+            : this(env, authToken, shopDomain, Validations.All)
         {
         }
 
-        /// <summary>
-        /// Old version - Deprecated
-        /// Creates the mediator class used to send order data to Riskified
-        /// </summary>
-        /// <param name="env">The Riskified environment to send to</param>
-        /// <param name="authToken">The merchant's auth token</param>
-        /// <param name="shopDomain">The merchant's shop domain</param>
-        /// <param name="shouldUseWeakValidation">Should weakly validate before sending</param>
         public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain, bool shouldUseWeakValidation)
-            : this(env, authToken, shopDomain, shouldUseWeakValidation ? Validations.Weak : Validations.All, null)
+            : this(env, authToken, shopDomain, shouldUseWeakValidation ? Validations.Weak : Validations.All)
         {
         }
 
-        /// <summary>
-        /// Creates the mediator class used to send order data to Riskified
-        /// </summary>
-        /// <param name="env">The Riskified environment to send to</param>
-        /// <param name="authToken">The merchant's auth token</param>
-        /// <param name="shopDomain">The merchant's shop domain</param>
-        /// <param name="validationMode">Validation mode to use</param>
-        /// <param name="httpClientFactory">Optional IHttpClientFactory for HttpClient management. If not provided, a default instance will be created.</param>
-        public OrdersGateway(
-            RiskifiedEnvironment env,
-            string authToken,
-            string shopDomain,
-            Validations validationMode,
-            IHttpClientFactory httpClientFactory = null)
+        public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain, Validations validationMode)
         {
-            _env = env;
-            _authToken = authToken;
-            _shopDomain = shopDomain;
-            _validationMode = validationMode;
-
-            // Setup HttpClientFactory - either use provided or create a local one
-            if (httpClientFactory == null)
-            {
-                var services = new ServiceCollection();
-                services.AddRiskifiedHttpClient();
-                _serviceProvider = services.BuildServiceProvider();
-                _httpClientFactory = _serviceProvider.GetRequiredService<IHttpClientFactory>();
-            }
-            else
-            {
-                _httpClientFactory = httpClientFactory;
-                _serviceProvider = null;
-            }
+            _ordersClient = new OrdersClient(env, authToken, shopDomain, validationMode);
+            _checkoutClient = new CheckoutClient(env, authToken, shopDomain, validationMode);
+            _accountClient = new AccountClient(env, authToken, shopDomain);
+            _decoClient = new DecoClient(env, authToken, shopDomain, validationMode);
+            _otpClient = new OtpClient(env, authToken, shopDomain);
         }
 
-        /// <summary>
-        /// Validates the Order checkout object fields (All fields except merchendOrderId are optional)
-        /// Sends a new order checkout to Riskified Servers (without Submit for analysis)
-        /// </summary>
-        /// <param name="order">The Order checkout to create</param>
-        /// <returns>The order checkout notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
+        // Checkout operations - delegate to CheckoutClient
         public OrderNotification Checkout(OrderCheckout orderCheckout)
-        {
-            return SendOrderCheckout(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_create"));
-        }
+            => _checkoutClient.CheckoutAsync(orderCheckout).GetAwaiter().GetResult();
 
         public OrderNotification Advise(OrderCheckout orderCheckout)
-        {
-            return SendOrderCheckout(orderCheckout, HttpUtils.BuildUrl(_env, "/api/advise"));
-        }
+            => _checkoutClient.AdviseAsync(orderCheckout).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the Order checkout object fields (All fields except merchendOrderId are optional)
-        /// Sends a new order checkout to Riskified Servers (without Submit for analysis)
-        /// </summary>
-        /// <param name="order">The Order checkout to create</param>
-        /// <returns>The order checkout notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification CheckoutDenied(OrderCheckoutDenied orderCheckout)
-        {
-            return SendOrderCheckout(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_denied"));
-        }
+            => _checkoutClient.CheckoutDeniedAsync(orderCheckout).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the Order object fields
-        /// Sends a new order to Riskified Servers (without Submit for analysis)
-        /// </summary>
-        /// <param name="order">The Order to create</param>
-        /// <returns>The order notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
+        // Order operations - delegate to OrdersClient
         public OrderNotification Create(Order order)
-        {            
-            return SendOrder(order, HttpUtils.BuildUrl(_env, "/api/create"));
-        }
+            => _ordersClient.CreateAsync(order).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the Order object fields
-        /// Sends an updated order (already created) to Riskified Servers
-        /// </summary>
-        /// <param name="order">The Order to update</param>
-        /// <returns>The order notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification Update(Order order)
-        {
-            return SendOrder(order, HttpUtils.BuildUrl(_env, "/api/update"));
-        }
+            => _ordersClient.UpdateAsync(order).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the Order object fields
-        /// Sends an order to Riskified Servers and submits it for analysis
-        /// </summary>
-        /// <param name="order">The Order to submit</param>
-        /// <returns>The order notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification Submit(Order order)
-        {
-            return SendOrder(order, HttpUtils.BuildUrl(_env, "/api/submit"));
-        }
+            => _ordersClient.SubmitAsync(order).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the Order object fields
-        /// Send an Order to Riskified, will be synchronously reviewed based on current plan
-        /// </summary>
-        /// <param name="order">The Order to make a synchronous decision (sync plan only)</param>
-        /// <returns>The order notification result containing status, decision, description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification Decide(Order order)
-        {
-            return SendOrder(order, HttpUtils.BuildUrl(_env, "/api/decide", FlowStrategy.Sync));
-        }
+            => _ordersClient.DecideAsync(order).GetAwaiter().GetResult();
 
-        public AccountActionNotification Login(Login login)
-        {
-            return SendAccountAction(login, HttpUtils.BuildUrl(_env, "/customers/login", FlowStrategy.Account));
-        }
-
-        public AccountActionNotification CustomerCreate(CustomerCreate customerCreate)
-        {
-            return SendAccountAction(customerCreate, HttpUtils.BuildUrl(_env, "/customers/customer_create", FlowStrategy.Account));
-        }
-
-        public AccountActionNotification CustomerUpdate(CustomerUpdate customerUpdate)
-        {
-            return SendAccountAction(customerUpdate, HttpUtils.BuildUrl(_env, "/customers/customer_update", FlowStrategy.Account));
-        }
-
-        public AccountActionNotification Logout(Logout logout)
-        {
-            return SendAccountAction(logout, HttpUtils.BuildUrl(_env, "/customers/logout", FlowStrategy.Account));
-        }
-
-        public AccountActionNotification ResetPasswordRequest(ResetPasswordRequest resetPasswordRequest)
-        {
-            return SendAccountAction(resetPasswordRequest, HttpUtils.BuildUrl(_env, "/customers/reset_password", FlowStrategy.Account));
-        }
-
-        public AccountActionNotification WishlistChanges(WishlistChanges wishlistChanges)
-        {
-            return SendAccountAction(wishlistChanges, HttpUtils.BuildUrl(_env, "/customers/wishlist", FlowStrategy.Account));
-        }
-
-        public AccountActionNotification Redeem(Redeem redeem)
-        {
-            return SendAccountAction(redeem, HttpUtils.BuildUrl(_env, "/customers/redeem", FlowStrategy.Account));
-        }
-
-        public AccountActionNotification CustomerReachOut(CustomerReachOut customerReachOut)
-        {
-            return SendAccountAction(customerReachOut, HttpUtils.BuildUrl(_env, "/customers/contact", FlowStrategy.Account));
-        }
-
-        /// <summary>
-        /// Check Eligibility for Deco payment
-        /// After checkout, inquiry if order is eligible for Deco
-        /// </summary>
-        /// <param name="orderIdOnly">Order (with ID of checkout) to check the orders eligibility for Deco payment</param>
-        /// <returns>The order notification result containing status, decision, description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
-        public OrderNotification Eligible(OrderIdOnly orderIdOnly)
-        {
-            return SendOrder(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/eligible", FlowStrategy.Deco));
-        }
-
-        /// <summary>
-        /// Opt-in to Deco payment
-        /// After checkout and eligibility check, opt-in to Deco payment
-        /// </summary>
-        /// <param name="orderIdOnly">Order (with ID of checkout) to opt eligible order in to Deco payment</param>
-        /// <returns>The order notification result containing status, decision, description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
-        public OrderNotification OptIn(OrderIdOnly orderIdOnly)
-        {
-            return SendOrder(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/opt_in", FlowStrategy.Deco));
-        }
-
-        /// <summary>
-        /// Validates the cancellation data
-        /// Sends a cancellation message for a specific order (id should already exist) to Riskified server for status and charge fees update
-        /// </summary>
-        /// <param name="orderCancellation"></param>
-        /// <returns>The order notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification Cancel(OrderCancellation orderCancellation)
-        {
-            return SendOrder(orderCancellation, HttpUtils.BuildUrl(_env, "/api/cancel"));
-        }
+            => _ordersClient.CancelAsync(orderCancellation).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the partial refunds data for an order
-        /// Sends the partial refund data for an order to Riskified server for status and charge fees update
-        /// </summary>
-        /// <param name="orderPartialRefund"></param>
-        /// <returns>The order notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification PartlyRefund(OrderPartialRefund orderPartialRefund)
-        {
-            return SendOrder(orderPartialRefund, HttpUtils.BuildUrl(_env, "/api/refund"));
-        }
+            => _ordersClient.PartlyRefundAsync(orderPartialRefund).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the cancellation data
-        /// Sends a cancellation message for a specific order (id should already exist) to Riskified server for status and charge fees update
-        /// </summary>
-        /// <param name="orderCancellation"></param>
-        /// <returns>The order notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification Fulfill(OrderFulfillment orderFulfillment)
-        {
-            return SendOrder(orderFulfillment, HttpUtils.BuildUrl(_env, "/api/fulfill"));
-        }
+            => _ordersClient.FulfillAsync(orderFulfillment).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Validates the decision data
-        /// Sends a decision message for a specific order (id should already exist) to Riskified server.
-        /// Update existing order external status. Lets Riskified know what was your decision on your order.
-        /// </summary>
-        /// <param name="OrderDecision">The decision details</param>
-        /// <returns>The order notification result containing status,description and sent order id in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
         public OrderNotification Decision(OrderDecision orderDecision)
-        {
-            return SendOrder(orderDecision, HttpUtils.BuildUrl(_env, "/api/decision"));
-        }
+            => _ordersClient.DecisionAsync(orderDecision).GetAwaiter().GetResult();
 
         public OrderNotification Chargeback(OrderChargeback orderChargeback)
+            => _ordersClient.ChargebackAsync(orderChargeback).GetAwaiter().GetResult();
+
+        public bool SendHistoricalOrders(IEnumerable<Order> orders, out Dictionary<string, string> failedOrders)
         {
-            return SendOrder(orderChargeback, HttpUtils.BuildUrl(_env, "/api/chargeback"));
+            var (success, failed) = _ordersClient.SendHistoricalOrdersAsync(orders).GetAwaiter().GetResult();
+            failedOrders = failed;
+            return success;
         }
 
+        // Account operations - delegate to AccountClient
+        public AccountActionNotification Login(Login login)
+            => _accountClient.LoginAsync(login).GetAwaiter().GetResult();
+
+        public AccountActionNotification CustomerCreate(CustomerCreate customerCreate)
+            => _accountClient.CustomerCreateAsync(customerCreate).GetAwaiter().GetResult();
+
+        public AccountActionNotification CustomerUpdate(CustomerUpdate customerUpdate)
+            => _accountClient.CustomerUpdateAsync(customerUpdate).GetAwaiter().GetResult();
+
+        public AccountActionNotification Logout(Logout logout)
+            => _accountClient.LogoutAsync(logout).GetAwaiter().GetResult();
+
+        public AccountActionNotification ResetPasswordRequest(ResetPasswordRequest resetPasswordRequest)
+            => _accountClient.ResetPasswordRequestAsync(resetPasswordRequest).GetAwaiter().GetResult();
+
+        public AccountActionNotification WishlistChanges(WishlistChanges wishlistChanges)
+            => _accountClient.WishlistChangesAsync(wishlistChanges).GetAwaiter().GetResult();
+
+        public AccountActionNotification Redeem(Redeem redeem)
+            => _accountClient.RedeemAsync(redeem).GetAwaiter().GetResult();
+
+        public AccountActionNotification CustomerReachOut(CustomerReachOut customerReachOut)
+            => _accountClient.CustomerReachOutAsync(customerReachOut).GetAwaiter().GetResult();
+
+        // Deco operations - delegate to DecoClient
+        public OrderNotification Eligible(OrderIdOnly orderIdOnly)
+            => _decoClient.EligibleAsync(orderIdOnly).GetAwaiter().GetResult();
+
+        public OrderNotification OptIn(OrderIdOnly orderIdOnly)
+            => _decoClient.OptInAsync(orderIdOnly).GetAwaiter().GetResult();
+
+        // OTP operations - delegate to OtpClient
         public OtpWidgetNotification InitiateOtp(OtpInitiate otpInitiate)
-        {
-            return SendInitiateOtp(otpInitiate, HttpUtils.BuildUrl(_env, "/recover/v1/otp/initiate", FlowStrategy.Otp));
-
-        }
-
-        /// <summary>
-        /// Validates the list of historical orders and sends them in batches to Riskified Servers.
-        /// The FinancialStatus field of each order should contain the latest order status as described at "http://apiref.riskified.com/net/#actions-historical"
-        /// 
-        /// </summary>
-        /// <param name="order">The Orders to send</param>
-        /// <param name="failedOrders">When the method returns false, contains a mapping from order_id (key) to error message (value), otherwise will be null</param>
-        /// <returns>True if all orders were sent successfully, false if one or more failed due to bad format or tranfer error</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of an order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
-        public bool SendHistoricalOrders(IEnumerable<Order> orders,out Dictionary<string,string> failedOrders)
-        {
-            const byte batchSize = 10;
-
-            if(orders == null)
-            {
-                failedOrders=null;
-                return true;
-            }
-
-            Dictionary<string, string> errors = new Dictionary<string, string>();
-            var riskifiedEndpointUrl = HttpUtils.BuildUrl(_env, "/api/historical");
-
-            List<Order> batch = new List<Order>(batchSize);
-            var enumerator = orders.GetEnumerator();
-            do
-            {
-                batch.Clear();
-                while (batch.Count < batchSize && enumerator.MoveNext())
-                {
-                    // validate orders and assign to next batch until full
-                    Order order = enumerator.Current;
-                    try
-                    {
-                        if (_validationMode != Validations.Skip)
-                        {
-                            order.Validate(_validationMode);
-                        }
-                        batch.Add(order);
-                    }
-                    catch (OrderFieldBadFormatException e)
-                    {
-                        errors.Add(order.Id, e.Message);
-                    }
-                }
-                if (batch.Count > 0)
-                {
-                    // send batch
-                    OrdersWrapper wrappedOrders = new OrdersWrapper(batch);
-                    try
-                    {
-                        HttpUtils.JsonPostAndParseResponseToObject<OrdersWrapper>(riskifiedEndpointUrl, wrappedOrders, _authToken, _shopDomain);
-                    }
-                    catch (RiskifiedTransactionException e)
-                    {
-                        batch.ForEach(o => errors.Add(o.Id, e.Message));
-                    }
-                }
-            } while (batch.Count == batchSize);
-
-            if(errors.Count == 0)
-            {
-                failedOrders = null;
-                return true;
-            }
-            failedOrders = errors;
-            return false;
-        }
-
-        /// <summary>
-        /// Validates the Order object fields
-        /// Sends the order to riskified server endpoint as configured in the ctor
-        /// </summary>
-        /// <param name="order">The order object to send</param>
-        /// <param name="riskifiedEndpointUrl">the endpoint to which the order should be sent</param>
-        /// <returns>The order tranaction result containing status and order id  in riskified servers (for followup only - not used latter) in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
-        private OrderNotification SendOrder(AbstractOrder order, Uri riskifiedEndpointUrl)
-        {
-            if(_validationMode != Validations.Skip)
-            {
-                order.Validate(_validationMode);
-            }
-            var wrappedOrder = new OrderWrapper<AbstractOrder>(order);
-            var transactionResult = HttpUtils.JsonPostAndParseResponseToObject<OrderWrapper<Notification>, OrderWrapper<AbstractOrder>>(riskifiedEndpointUrl, wrappedOrder, _authToken, _shopDomain);
-            return new OrderNotification(transactionResult);
-            
-        }
-
-        private AccountActionNotification SendAccountAction(AbstractAccountAction accountAction, Uri riskifiedEndpointUrl)
-        {
-            var transactionResult = HttpUtils.JsonPostAndParseResponseToObject<AccountActionNotification, AbstractAccountAction>(riskifiedEndpointUrl, accountAction, _authToken, _shopDomain);
-            return transactionResult;
-        }
-
-        private OtpWidgetNotification SendInitiateOtp(OtpInitiate otpInitiate, Uri riskifiedEndpointUrl)
-        {
-            var transactionResult = HttpUtils.JsonPostAndParseResponseToObject<OtpWidgetNotification, OtpInitiate>(riskifiedEndpointUrl, otpInitiate, _authToken, _shopDomain);
-            return transactionResult;
-        }
-
-        /// <summary>
-        /// Validates the Order object fields
-        /// Sends the order to riskified server endpoint as configured in the ctor
-        /// </summary>
-        /// <param name="order">The order checkout object to send</param>
-        /// <param name="riskifiedEndpointUrl">the endpoint to which the order should be sent</param>
-        /// <returns>The order tranaction result containing status and order id  in riskified servers (for followup only - not used latter) in case of successful transfer</returns>
-        /// <exception cref="OrderFieldBadFormatException">On bad format of the order (missing fields data or invalid data)</exception>
-        /// <exception cref="RiskifiedTransactionException">On errors with the transaction itself (network errors, bad response data)</exception>
-        private OrderNotification SendOrderCheckout(AbstractOrder orderCheckout, Uri riskifiedEndpointUrl)
-        {
-            if (_validationMode != Validations.Skip)
-            {
-                orderCheckout.Validate(_validationMode);
-            }
-            var wrappedOrder = new OrderCheckoutWrapper<AbstractOrder>(orderCheckout);
-            var transactionResult = HttpUtils.JsonPostAndParseResponseToObject<OrderCheckoutWrapper<Notification>, OrderCheckoutWrapper<AbstractOrder>>(riskifiedEndpointUrl, wrappedOrder, _authToken, _shopDomain);
-            return new OrderNotification(transactionResult);
-        }
-
-        #region Async Methods (Modern API)
-
-        // Async versions of private helper methods
-
-        private async Task<OrderNotification> SendOrderAsync(AbstractOrder order, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
-        {
-            if (_validationMode != Validations.Skip)
-            {
-                order.Validate(_validationMode);
-            }
-            var wrappedOrder = new OrderWrapper<AbstractOrder>(order);
-            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
-            var transactionResult = await HttpUtils.JsonPostAndParseResponseToObjectAsync<OrderWrapper<Notification>, OrderWrapper<AbstractOrder>>(
-                riskifiedEndpointUrl, wrappedOrder, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
-            return new OrderNotification(transactionResult);
-        }
-
-        private async Task<AccountActionNotification> SendAccountActionAsync(AbstractAccountAction accountAction, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
-        {
-            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
-            return await HttpUtils.JsonPostAndParseResponseToObjectAsync<AccountActionNotification, AbstractAccountAction>(
-                riskifiedEndpointUrl, accountAction, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task<OtpWidgetNotification> SendInitiateOtpAsync(OtpInitiate otpInitiate, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
-        {
-            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
-            return await HttpUtils.JsonPostAndParseResponseToObjectAsync<OtpWidgetNotification, OtpInitiate>(
-                riskifiedEndpointUrl, otpInitiate, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task<OrderNotification> SendOrderCheckoutAsync(AbstractOrder orderCheckout, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
-        {
-            if (_validationMode != Validations.Skip)
-            {
-                orderCheckout.Validate(_validationMode);
-            }
-            var wrappedOrder = new OrderCheckoutWrapper<AbstractOrder>(orderCheckout);
-            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
-            var transactionResult = await HttpUtils.JsonPostAndParseResponseToObjectAsync<OrderCheckoutWrapper<Notification>, OrderCheckoutWrapper<AbstractOrder>>(
-                riskifiedEndpointUrl, wrappedOrder, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
-            return new OrderNotification(transactionResult);
-        }
-
-        // Async versions of public API methods
-
-        /// <summary>
-        /// Asynchronously validates and sends a new order checkout to Riskified Servers
-        /// </summary>
-        public async Task<OrderNotification> CheckoutAsync(OrderCheckout orderCheckout, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_create"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends an advise request to Riskified Servers
-        /// </summary>
-        public async Task<OrderNotification> AdviseAsync(OrderCheckout orderCheckout, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/advise"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a checkout denied notification to Riskified Servers
-        /// </summary>
-        public async Task<OrderNotification> CheckoutDeniedAsync(OrderCheckoutDenied orderCheckout, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_denied"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously validates and creates a new order in Riskified Servers
-        /// </summary>
-        public async Task<OrderNotification> CreateAsync(Order order, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/create"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously validates and updates an existing order in Riskified Servers
-        /// </summary>
-        public async Task<OrderNotification> UpdateAsync(Order order, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/update"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously validates and submits an order to Riskified Servers for analysis
-        /// </summary>
-        public async Task<OrderNotification> SubmitAsync(Order order, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/submit"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends an order for synchronous decision
-        /// </summary>
-        public async Task<OrderNotification> DecideAsync(Order order, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/decide", FlowStrategy.Sync), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a login account action
-        /// </summary>
-        public async Task<AccountActionNotification> LoginAsync(Login login, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(login, HttpUtils.BuildUrl(_env, "/customers/login", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a customer create account action
-        /// </summary>
-        public async Task<AccountActionNotification> CustomerCreateAsync(CustomerCreate customerCreate, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(customerCreate, HttpUtils.BuildUrl(_env, "/customers/customer_create", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a customer update account action
-        /// </summary>
-        public async Task<AccountActionNotification> CustomerUpdateAsync(CustomerUpdate customerUpdate, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(customerUpdate, HttpUtils.BuildUrl(_env, "/customers/customer_update", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a logout account action
-        /// </summary>
-        public async Task<AccountActionNotification> LogoutAsync(Logout logout, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(logout, HttpUtils.BuildUrl(_env, "/customers/logout", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a reset password request account action
-        /// </summary>
-        public async Task<AccountActionNotification> ResetPasswordRequestAsync(ResetPasswordRequest resetPasswordRequest, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(resetPasswordRequest, HttpUtils.BuildUrl(_env, "/customers/reset_password", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends wishlist changes account action
-        /// </summary>
-        public async Task<AccountActionNotification> WishlistChangesAsync(WishlistChanges wishlistChanges, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(wishlistChanges, HttpUtils.BuildUrl(_env, "/customers/wishlist", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a redeem account action
-        /// </summary>
-        public async Task<AccountActionNotification> RedeemAsync(Redeem redeem, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(redeem, HttpUtils.BuildUrl(_env, "/customers/redeem", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a customer reach out account action
-        /// </summary>
-        public async Task<AccountActionNotification> CustomerReachOutAsync(CustomerReachOut customerReachOut, CancellationToken cancellationToken = default)
-        {
-            return await SendAccountActionAsync(customerReachOut, HttpUtils.BuildUrl(_env, "/customers/contact", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously checks eligibility for Deco payment
-        /// </summary>
-        public async Task<OrderNotification> EligibleAsync(OrderIdOnly orderIdOnly, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/eligible", FlowStrategy.Deco), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously opts in to Deco payment
-        /// </summary>
-        public async Task<OrderNotification> OptInAsync(OrderIdOnly orderIdOnly, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/opt_in", FlowStrategy.Deco), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a cancellation message for a specific order
-        /// </summary>
-        public async Task<OrderNotification> CancelAsync(OrderCancellation orderCancellation, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(orderCancellation, HttpUtils.BuildUrl(_env, "/api/cancel"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends partial refund data for an order
-        /// </summary>
-        public async Task<OrderNotification> PartlyRefundAsync(OrderPartialRefund orderPartialRefund, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(orderPartialRefund, HttpUtils.BuildUrl(_env, "/api/refund"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends fulfillment data for an order
-        /// </summary>
-        public async Task<OrderNotification> FulfillAsync(OrderFulfillment orderFulfillment, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(orderFulfillment, HttpUtils.BuildUrl(_env, "/api/fulfill"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends a decision message for a specific order
-        /// </summary>
-        public async Task<OrderNotification> DecisionAsync(OrderDecision orderDecision, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(orderDecision, HttpUtils.BuildUrl(_env, "/api/decision"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously sends chargeback data for an order
-        /// </summary>
-        public async Task<OrderNotification> ChargebackAsync(OrderChargeback orderChargeback, CancellationToken cancellationToken = default)
-        {
-            return await SendOrderAsync(orderChargeback, HttpUtils.BuildUrl(_env, "/api/chargeback"), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously initiates OTP
-        /// </summary>
-        public async Task<OtpWidgetNotification> InitiateOtpAsync(OtpInitiate otpInitiate, CancellationToken cancellationToken = default)
-        {
-            return await SendInitiateOtpAsync(otpInitiate, HttpUtils.BuildUrl(_env, "/recover/v1/otp/initiate", FlowStrategy.Otp), cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously validates and sends historical orders in batches to Riskified Servers
-        /// </summary>
-        public async Task<(bool Success, Dictionary<string, string> FailedOrders)> SendHistoricalOrdersAsync(
-            IEnumerable<Order> orders,
-            CancellationToken cancellationToken = default)
-        {
-            const byte batchSize = 10;
-
-            if (orders == null)
-            {
-                return (true, null);
-            }
-
-            var errors = new Dictionary<string, string>();
-            var riskifiedEndpointUrl = HttpUtils.BuildUrl(_env, "/api/historical");
-            var batch = new List<Order>(batchSize);
-            var enumerator = orders.GetEnumerator();
-
-            do
-            {
-                batch.Clear();
-                while (batch.Count < batchSize && enumerator.MoveNext())
-                {
-                    var order = enumerator.Current;
-                    try
-                    {
-                        if (_validationMode != Validations.Skip)
-                        {
-                            order.Validate(_validationMode);
-                        }
-                        batch.Add(order);
-                    }
-                    catch (OrderFieldBadFormatException e)
-                    {
-                        errors.Add(order.Id, e.Message);
-                    }
-                }
-
-                if (batch.Count > 0)
-                {
-                    var wrappedOrders = new OrdersWrapper(batch);
-                    try
-                    {
-                        var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
-                        await HttpUtils.JsonPostAndParseResponseToObjectAsync<OrdersWrapper>(
-                            riskifiedEndpointUrl, wrappedOrders, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (RiskifiedTransactionException e)
-                    {
-                        batch.ForEach(o => errors.Add(o.Id, e.Message));
-                    }
-                }
-            } while (batch.Count == batchSize);
-
-            return errors.Count == 0 ? (true, null) : (false, errors);
-        }
-
-        #endregion
+            => _otpClient.InitiateOtpAsync(otpInitiate).GetAwaiter().GetResult();
     }
-
-
 }

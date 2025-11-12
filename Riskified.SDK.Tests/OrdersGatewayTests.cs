@@ -59,8 +59,8 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
         // Arrange
         var order = CreateTestOrder();
 
-        // Act
-        var response = await _fixture.Gateway.CreateAsync(order);
+        // Act - Use OrdersClient (modern specialized client)
+        var response = await _fixture.OrdersClient.CreateAsync(order);
 
         // Assert
         Assert.NotNull(response);
@@ -74,9 +74,9 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
         // Arrange
         var order = CreateTestOrder();
 
-        // Act - First create, then submit
-        await _fixture.Gateway.CreateAsync(order);
-        var response = await _fixture.Gateway.SubmitAsync(order);
+        // Act - Use OrdersClient (modern specialized client)
+        await _fixture.OrdersClient.CreateAsync(order);
+        var response = await _fixture.OrdersClient.SubmitAsync(order);
 
         // Assert
         Assert.NotNull(response);
@@ -90,11 +90,11 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
     {
         // Arrange
         var order = CreateTestOrder();
-        await _fixture.Gateway.CreateAsync(order);
+        await _fixture.OrdersClient.CreateAsync(order);
 
-        // Act - Update the order
+        // Act - Use OrdersClient (modern specialized client)
         order.TotalPrice = 150.00;
-        var response = await _fixture.Gateway.UpdateAsync(order);
+        var response = await _fixture.OrdersClient.UpdateAsync(order);
 
         // Assert
         Assert.NotNull(response);
@@ -106,11 +106,11 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
     {
         // Arrange
         var order = CreateTestOrder();
-        await _fixture.Gateway.CreateAsync(order);
+        await _fixture.OrdersClient.CreateAsync(order);
         var cancellation = new OrderCancellation(order.Id, DateTime.UtcNow, "Test cancellation");
 
-        // Act
-        var response = await _fixture.Gateway.CancelAsync(cancellation);
+        // Act - Use OrdersClient (modern specialized client)
+        var response = await _fixture.OrdersClient.CancelAsync(cancellation);
 
         // Assert
         Assert.NotNull(response);
