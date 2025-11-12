@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Riskified.SDK.Exceptions;
 using Riskified.SDK.Model;
@@ -24,18 +25,24 @@ namespace Riskified.SDK.Orders
         private readonly string _authToken;
         private readonly string _shopDomain;
         private readonly Validations _validationMode;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IServiceProvider _serviceProvider;
 
         /// <summary>
         /// Creates OrdersGateway from IOptions (for dependency injection)
         /// Recommended for ASP.NET Core and modern .NET applications
         /// </summary>
         /// <param name="options">Riskified configuration options</param>
-        public OrdersGateway(IOptions<RiskifiedOptions> options)
+        /// <param name="httpClientFactory">Optional IHttpClientFactory for HttpClient management. If not provided, a default instance will be created.</param>
+        public OrdersGateway(
+            IOptions<RiskifiedOptions> options,
+            IHttpClientFactory httpClientFactory = null)
             : this(
                 options?.Value?.Environment ?? throw new ArgumentNullException(nameof(options)),
                 options.Value.MerchantAuthenticationToken ?? throw new ArgumentException("MerchantAuthenticationToken is required", nameof(options)),
                 options.Value.MerchantDomain ?? throw new ArgumentException("MerchantDomain is required", nameof(options)),
-                options.Value.ValidationMode)
+                options.Value.ValidationMode,
+                httpClientFactory)
         {
         }
 
@@ -45,20 +52,21 @@ namespace Riskified.SDK.Orders
         /// <param name="env">The Riskified environment to send to</param>
         /// <param name="authToken">The merchant's auth token</param>
         /// <param name="shopDomain">The merchant's shop domain</param>
-        public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain) : this(env,authToken,shopDomain,Validations.All)
+        public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain)
+            : this(env, authToken, shopDomain, Validations.All, null)
         {
         }
 
         /// <summary>
         /// Old version - Deprecated
-        /// Creates the mediator class used to send order data to Riskified        
+        /// Creates the mediator class used to send order data to Riskified
         /// </summary>
         /// <param name="env">The Riskified environment to send to</param>
         /// <param name="authToken">The merchant's auth token</param>
         /// <param name="shopDomain">The merchant's shop domain</param>
         /// <param name="shouldUseWeakValidation">Should weakly validate before sending</param>
         public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain, bool shouldUseWeakValidation)
-            : this(env, authToken, shopDomain, shouldUseWeakValidation ? Validations.Weak : Validations.All)
+            : this(env, authToken, shopDomain, shouldUseWeakValidation ? Validations.Weak : Validations.All, null)
         {
         }
 
@@ -69,12 +77,32 @@ namespace Riskified.SDK.Orders
         /// <param name="authToken">The merchant's auth token</param>
         /// <param name="shopDomain">The merchant's shop domain</param>
         /// <param name="validationMode">Validation mode to use</param>
-        public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain, Validations validationMode)
+        /// <param name="httpClientFactory">Optional IHttpClientFactory for HttpClient management. If not provided, a default instance will be created.</param>
+        public OrdersGateway(
+            RiskifiedEnvironment env,
+            string authToken,
+            string shopDomain,
+            Validations validationMode,
+            IHttpClientFactory httpClientFactory = null)
         {
             _env = env;
             _authToken = authToken;
             _shopDomain = shopDomain;
             _validationMode = validationMode;
+
+            // Setup HttpClientFactory - either use provided or create a local one
+            if (httpClientFactory == null)
+            {
+                var services = new ServiceCollection();
+                services.AddRiskifiedHttpClient();
+                _serviceProvider = services.BuildServiceProvider();
+                _httpClientFactory = _serviceProvider.GetRequiredService<IHttpClientFactory>();
+            }
+            else
+            {
+                _httpClientFactory = httpClientFactory;
+                _serviceProvider = null;
+            }
         }
 
         /// <summary>
@@ -416,37 +444,41 @@ namespace Riskified.SDK.Orders
 
         // Async versions of private helper methods
 
-        private async Task<OrderNotification> SendOrderAsync(AbstractOrder order, Uri riskifiedEndpointUrl, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        private async Task<OrderNotification> SendOrderAsync(AbstractOrder order, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
         {
             if (_validationMode != Validations.Skip)
             {
                 order.Validate(_validationMode);
             }
             var wrappedOrder = new OrderWrapper<AbstractOrder>(order);
+            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
             var transactionResult = await HttpUtils.JsonPostAndParseResponseToObjectAsync<OrderWrapper<Notification>, OrderWrapper<AbstractOrder>>(
                 riskifiedEndpointUrl, wrappedOrder, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
             return new OrderNotification(transactionResult);
         }
 
-        private async Task<AccountActionNotification> SendAccountActionAsync(AbstractAccountAction accountAction, Uri riskifiedEndpointUrl, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        private async Task<AccountActionNotification> SendAccountActionAsync(AbstractAccountAction accountAction, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
         {
+            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
             return await HttpUtils.JsonPostAndParseResponseToObjectAsync<AccountActionNotification, AbstractAccountAction>(
                 riskifiedEndpointUrl, accountAction, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<OtpWidgetNotification> SendInitiateOtpAsync(OtpInitiate otpInitiate, Uri riskifiedEndpointUrl, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        private async Task<OtpWidgetNotification> SendInitiateOtpAsync(OtpInitiate otpInitiate, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
         {
+            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
             return await HttpUtils.JsonPostAndParseResponseToObjectAsync<OtpWidgetNotification, OtpInitiate>(
                 riskifiedEndpointUrl, otpInitiate, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<OrderNotification> SendOrderCheckoutAsync(AbstractOrder orderCheckout, Uri riskifiedEndpointUrl, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        private async Task<OrderNotification> SendOrderCheckoutAsync(AbstractOrder orderCheckout, Uri riskifiedEndpointUrl, CancellationToken cancellationToken = default)
         {
             if (_validationMode != Validations.Skip)
             {
                 orderCheckout.Validate(_validationMode);
             }
             var wrappedOrder = new OrderCheckoutWrapper<AbstractOrder>(orderCheckout);
+            var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
             var transactionResult = await HttpUtils.JsonPostAndParseResponseToObjectAsync<OrderCheckoutWrapper<Notification>, OrderCheckoutWrapper<AbstractOrder>>(
                 riskifiedEndpointUrl, wrappedOrder, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
             return new OrderNotification(transactionResult);
@@ -457,185 +489,185 @@ namespace Riskified.SDK.Orders
         /// <summary>
         /// Asynchronously validates and sends a new order checkout to Riskified Servers
         /// </summary>
-        public async Task<OrderNotification> CheckoutAsync(OrderCheckout orderCheckout, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> CheckoutAsync(OrderCheckout orderCheckout, CancellationToken cancellationToken = default)
         {
-            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_create"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_create"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends an advise request to Riskified Servers
         /// </summary>
-        public async Task<OrderNotification> AdviseAsync(OrderCheckout orderCheckout, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> AdviseAsync(OrderCheckout orderCheckout, CancellationToken cancellationToken = default)
         {
-            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/advise"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/advise"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a checkout denied notification to Riskified Servers
         /// </summary>
-        public async Task<OrderNotification> CheckoutDeniedAsync(OrderCheckoutDenied orderCheckout, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> CheckoutDeniedAsync(OrderCheckoutDenied orderCheckout, CancellationToken cancellationToken = default)
         {
-            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_denied"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_denied"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously validates and creates a new order in Riskified Servers
         /// </summary>
-        public async Task<OrderNotification> CreateAsync(Order order, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> CreateAsync(Order order, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/create"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/create"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously validates and updates an existing order in Riskified Servers
         /// </summary>
-        public async Task<OrderNotification> UpdateAsync(Order order, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> UpdateAsync(Order order, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/update"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/update"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously validates and submits an order to Riskified Servers for analysis
         /// </summary>
-        public async Task<OrderNotification> SubmitAsync(Order order, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> SubmitAsync(Order order, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/submit"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/submit"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends an order for synchronous decision
         /// </summary>
-        public async Task<OrderNotification> DecideAsync(Order order, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> DecideAsync(Order order, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/decide", FlowStrategy.Sync), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/decide", FlowStrategy.Sync), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a login account action
         /// </summary>
-        public async Task<AccountActionNotification> LoginAsync(Login login, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> LoginAsync(Login login, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(login, HttpUtils.BuildUrl(_env, "/customers/login", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(login, HttpUtils.BuildUrl(_env, "/customers/login", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a customer create account action
         /// </summary>
-        public async Task<AccountActionNotification> CustomerCreateAsync(CustomerCreate customerCreate, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> CustomerCreateAsync(CustomerCreate customerCreate, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(customerCreate, HttpUtils.BuildUrl(_env, "/customers/customer_create", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(customerCreate, HttpUtils.BuildUrl(_env, "/customers/customer_create", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a customer update account action
         /// </summary>
-        public async Task<AccountActionNotification> CustomerUpdateAsync(CustomerUpdate customerUpdate, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> CustomerUpdateAsync(CustomerUpdate customerUpdate, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(customerUpdate, HttpUtils.BuildUrl(_env, "/customers/customer_update", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(customerUpdate, HttpUtils.BuildUrl(_env, "/customers/customer_update", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a logout account action
         /// </summary>
-        public async Task<AccountActionNotification> LogoutAsync(Logout logout, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> LogoutAsync(Logout logout, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(logout, HttpUtils.BuildUrl(_env, "/customers/logout", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(logout, HttpUtils.BuildUrl(_env, "/customers/logout", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a reset password request account action
         /// </summary>
-        public async Task<AccountActionNotification> ResetPasswordRequestAsync(ResetPasswordRequest resetPasswordRequest, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> ResetPasswordRequestAsync(ResetPasswordRequest resetPasswordRequest, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(resetPasswordRequest, HttpUtils.BuildUrl(_env, "/customers/reset_password", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(resetPasswordRequest, HttpUtils.BuildUrl(_env, "/customers/reset_password", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends wishlist changes account action
         /// </summary>
-        public async Task<AccountActionNotification> WishlistChangesAsync(WishlistChanges wishlistChanges, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> WishlistChangesAsync(WishlistChanges wishlistChanges, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(wishlistChanges, HttpUtils.BuildUrl(_env, "/customers/wishlist", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(wishlistChanges, HttpUtils.BuildUrl(_env, "/customers/wishlist", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a redeem account action
         /// </summary>
-        public async Task<AccountActionNotification> RedeemAsync(Redeem redeem, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> RedeemAsync(Redeem redeem, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(redeem, HttpUtils.BuildUrl(_env, "/customers/redeem", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(redeem, HttpUtils.BuildUrl(_env, "/customers/redeem", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a customer reach out account action
         /// </summary>
-        public async Task<AccountActionNotification> CustomerReachOutAsync(CustomerReachOut customerReachOut, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<AccountActionNotification> CustomerReachOutAsync(CustomerReachOut customerReachOut, CancellationToken cancellationToken = default)
         {
-            return await SendAccountActionAsync(customerReachOut, HttpUtils.BuildUrl(_env, "/customers/contact", FlowStrategy.Account), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendAccountActionAsync(customerReachOut, HttpUtils.BuildUrl(_env, "/customers/contact", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously checks eligibility for Deco payment
         /// </summary>
-        public async Task<OrderNotification> EligibleAsync(OrderIdOnly orderIdOnly, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> EligibleAsync(OrderIdOnly orderIdOnly, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/eligible", FlowStrategy.Deco), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/eligible", FlowStrategy.Deco), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously opts in to Deco payment
         /// </summary>
-        public async Task<OrderNotification> OptInAsync(OrderIdOnly orderIdOnly, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> OptInAsync(OrderIdOnly orderIdOnly, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/opt_in", FlowStrategy.Deco), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(orderIdOnly, HttpUtils.BuildUrl(_env, "/api/opt_in", FlowStrategy.Deco), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a cancellation message for a specific order
         /// </summary>
-        public async Task<OrderNotification> CancelAsync(OrderCancellation orderCancellation, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> CancelAsync(OrderCancellation orderCancellation, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(orderCancellation, HttpUtils.BuildUrl(_env, "/api/cancel"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(orderCancellation, HttpUtils.BuildUrl(_env, "/api/cancel"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends partial refund data for an order
         /// </summary>
-        public async Task<OrderNotification> PartlyRefundAsync(OrderPartialRefund orderPartialRefund, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> PartlyRefundAsync(OrderPartialRefund orderPartialRefund, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(orderPartialRefund, HttpUtils.BuildUrl(_env, "/api/refund"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(orderPartialRefund, HttpUtils.BuildUrl(_env, "/api/refund"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends fulfillment data for an order
         /// </summary>
-        public async Task<OrderNotification> FulfillAsync(OrderFulfillment orderFulfillment, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> FulfillAsync(OrderFulfillment orderFulfillment, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(orderFulfillment, HttpUtils.BuildUrl(_env, "/api/fulfill"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(orderFulfillment, HttpUtils.BuildUrl(_env, "/api/fulfill"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends a decision message for a specific order
         /// </summary>
-        public async Task<OrderNotification> DecisionAsync(OrderDecision orderDecision, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> DecisionAsync(OrderDecision orderDecision, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(orderDecision, HttpUtils.BuildUrl(_env, "/api/decision"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(orderDecision, HttpUtils.BuildUrl(_env, "/api/decision"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously sends chargeback data for an order
         /// </summary>
-        public async Task<OrderNotification> ChargebackAsync(OrderChargeback orderChargeback, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OrderNotification> ChargebackAsync(OrderChargeback orderChargeback, CancellationToken cancellationToken = default)
         {
-            return await SendOrderAsync(orderChargeback, HttpUtils.BuildUrl(_env, "/api/chargeback"), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendOrderAsync(orderChargeback, HttpUtils.BuildUrl(_env, "/api/chargeback"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Asynchronously initiates OTP
         /// </summary>
-        public async Task<OtpWidgetNotification> InitiateOtpAsync(OtpInitiate otpInitiate, HttpClient httpClient = null, CancellationToken cancellationToken = default)
+        public async Task<OtpWidgetNotification> InitiateOtpAsync(OtpInitiate otpInitiate, CancellationToken cancellationToken = default)
         {
-            return await SendInitiateOtpAsync(otpInitiate, HttpUtils.BuildUrl(_env, "/recover/v1/otp/initiate", FlowStrategy.Otp), httpClient, cancellationToken).ConfigureAwait(false);
+            return await SendInitiateOtpAsync(otpInitiate, HttpUtils.BuildUrl(_env, "/recover/v1/otp/initiate", FlowStrategy.Otp), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -643,7 +675,6 @@ namespace Riskified.SDK.Orders
         /// </summary>
         public async Task<(bool Success, Dictionary<string, string> FailedOrders)> SendHistoricalOrdersAsync(
             IEnumerable<Order> orders,
-            HttpClient httpClient = null,
             CancellationToken cancellationToken = default)
         {
             const byte batchSize = 10;
@@ -683,6 +714,7 @@ namespace Riskified.SDK.Orders
                     var wrappedOrders = new OrdersWrapper(batch);
                     try
                     {
+                        var httpClient = _httpClientFactory.CreateClient("RiskifiedClient");
                         await HttpUtils.JsonPostAndParseResponseToObjectAsync<OrdersWrapper>(
                             riskifiedEndpointUrl, wrappedOrders, _authToken, _shopDomain, httpClient, cancellationToken).ConfigureAwait(false);
                     }
