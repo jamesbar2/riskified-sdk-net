@@ -147,51 +147,120 @@ This modernization requires breaking changes that make the SDK incompatible with
 
 ---
 
-### Phase 4: Dependency Injection & Configuration
+### Phase 4: Dependency Injection & Configuration ✅ COMPLETE
 **Branch:** `jbarnett/4-dependency-injection`
 **PR Target:** `jbarnett/3-async-await`
+**Status:** ✅ **COMPLETE** - Full DI support with automatic HttpClient management
+
+**Achievements:**
+- ✅ Created RiskifiedOptions with IOptions pattern
+- ✅ Added AddRiskified() service registration
+- ✅ OrdersGateway supports IOptions constructor
+- ✅ Automatic IHttpClientFactory creation (manual or DI)
+- ✅ Updated README with DI documentation
+- ✅ All tests passing
+
+---
+
+### Phase 5: Client Separation (Single Responsibility Principle)
+**Branch:** `jbarnett/5-client-separation`
+**PR Target:** `jbarnett/4-dependency-injection`
+**Status:** 🔄 **IN PROGRESS**
+
+**Problem:**
+OrdersGateway violates Single Responsibility Principle - it's a "god class" with 25+ methods spanning 5 distinct API domains:
+- Orders API (11 methods) - /api/create, /api/submit, etc.
+- Checkout API (3 methods) - /api/checkout_create, /api/advise, etc.
+- Account API (8 methods) - /customers/login, /customers/logout, etc.
+- Deco API (2 methods) - /api/eligible, /api/opt_in
+- OTP API (1 method) - /recover/v1/otp/initiate
+
+This creates:
+- Poor discoverability (IntelliSense shows 25+ unrelated methods)
+- Tight coupling (all APIs bundled together)
+- Difficult testing (god class harder to mock)
+- Unclear separation of concerns
+
+**Solution:**
+Create 5 focused client classes, each handling one API domain. OrdersGateway becomes deprecated backward-compatibility wrapper.
 
 **Objectives:**
-- Create `RiskifiedOptions` class with IOptions pattern
-- Implement service collection extensions
-- Support multiple initialization patterns
-- Add configuration from appsettings.json
-- Register services as Singleton
-- Maintain backward compatibility with direct instantiation
+- Create specialized async-only client classes
+  - `OrdersClient` - Order lifecycle operations (11 async methods)
+  - `CheckoutClient` - Pre-checkout operations (3 async methods)
+  - `AccountClient` - Account security operations (8 async methods)
+  - `DecoClient` - Deco payment operations (2 async methods)
+  - `OtpClient` - OTP recovery operations (1 async method)
+- Refactor OrdersGateway to delegate to clients
+  - Mark `[Obsolete]` with migration guidance
+  - Keep sync methods only (delegate to clients internally)
+  - Remove all async methods (use clients instead)
+  - Inject specialized clients in constructor
+- Update service registration to register all clients
+- Maintain full backward compatibility
 
-**Initialization Patterns:**
+**Architecture:**
 ```csharp
-// Pattern 1: Simple (existing, maintained)
-var gateway = new OrdersGateway(env, authToken, shopDomain);
+// New clean clients (async-only)
+public class OrdersClient
+{
+    public async Task<OrderNotification> CreateAsync(Order order) { }
+    public async Task<OrderNotification> SubmitAsync(Order order) { }
+    // ... 9 more order methods
+}
 
-// Pattern 2: Constructor with all options
-var gateway = new OrdersGateway(
-    environment: RiskifiedEnvironment.Production,
-    authToken: "token",
-    shopDomain: "shop.myshopify.com");
+public class CheckoutClient
+{
+    public async Task<OrderNotification> CheckoutAsync(OrderCheckout) { }
+    // ... 2 more checkout methods
+}
 
-// Pattern 3: Dependency Injection (new, recommended)
-services.AddRiskified(configuration.GetSection("Riskified"));
-// Inject: public MyService(OrdersGateway gateway) { ... }
+// Deprecated wrapper (backward compat)
+[Obsolete("Use OrdersClient, CheckoutClient, etc. instead")]
+public class OrdersGateway
+{
+    private readonly OrdersClient _ordersClient;
+    private readonly CheckoutClient _checkoutClient;
+    // ... other clients
+
+    // Sync methods delegate to clients
+    public OrderNotification Create(Order order)
+        => _ordersClient.CreateAsync(order).GetAwaiter().GetResult();
+
+    // No async methods - removed
+}
 ```
 
+**Benefits:**
+- Clear separation of concerns (each client has one responsibility)
+- Better discoverability (IntelliSense shows only relevant methods)
+- Improved testability (mock specific clients, not god class)
+- Flexible injection (inject only the clients you need)
+- Cleaner API surface
+- Maintains backward compatibility
+
 **New Files:**
-- `RiskifiedOptions.cs` - Configuration POCO
-- `RiskifiedServiceCollectionExtensions.cs` - DI registration methods
+- `Clients/OrdersClient.cs` - Order operations
+- `Clients/CheckoutClient.cs` - Checkout operations
+- `Clients/AccountClient.cs` - Account operations
+- `Clients/DecoClient.cs` - Deco operations
+- `Clients/OtpClient.cs` - OTP operations
 
 **Files Modified:**
-- `Orders/OrdersGateway.cs` - Add constructor overloads for DI
-- Sample application - Add appsettings.json, demonstrate DI usage
+- `Orders/OrdersGateway.cs` - Deprecate, delegate to clients, remove async methods
+- `RiskifiedServiceCollectionExtensions.cs` - Register all clients
+- Tests - Add tests for new clients
+- Sample - Demonstrate new client usage
 
-**Complexity:** Medium
-**Risk:** Low (additive, maintains backward compatibility)
+**Complexity:** High
+**Risk:** Low (OrdersGateway maintains backward compatibility)
 **Estimated Effort:** 2-3 days
 
 ---
 
-### Phase 5: Modern Logging Infrastructure
-**Branch:** `jbarnett/5-logging`
-**PR Target:** `jbarnett/4-dependency-injection`
+### Phase 6: Modern Logging Infrastructure
+**Branch:** `jbarnett/6-logging`
+**PR Target:** `jbarnett/5-client-separation`
 
 **Objectives:**
 - Replace custom ILogger with Microsoft.Extensions.Logging.ILogger

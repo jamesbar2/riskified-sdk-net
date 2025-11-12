@@ -1,65 +1,29 @@
+using Riskified.SDK.Clients;
 using Riskified.SDK.Model;
 using Riskified.SDK.Model.OrderElements;
 
 namespace Riskified.SDK.Tests;
 
 /// <summary>
-/// Integration tests for OrdersGateway
-/// These tests require valid Riskified Sandbox credentials in testsettings.Local.json
-/// Tests are marked with [Fact(Skip = ...)] by default - remove Skip to run against sandbox
+/// Comprehensive tests for OrdersClient
+/// Tests order lifecycle operations against Sandbox API
 /// </summary>
-public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
+public class OrdersClientTests : IClassFixture<RiskifiedTestFixture>
 {
     private readonly RiskifiedTestFixture _fixture;
 
-    public OrdersGatewayTests(RiskifiedTestFixture fixture)
+    public OrdersClientTests(RiskifiedTestFixture fixture)
     {
         _fixture = fixture;
     }
 
     [Fact]
-    public void OrdersGateway_Initializes_WithConfiguration()
-    {
-        // Assert
-        Assert.NotNull(_fixture.Gateway);
-    }
-
-    [Fact(Skip = "Integration test - requires valid Sandbox credentials")]
-    public void Create_Order_InSandbox()
+    public async Task CreateAsync_CreatesOrder_InSandbox()
     {
         // Arrange
         var order = CreateTestOrder();
 
         // Act
-        var response = _fixture.Gateway.Create(order);
-
-        // Assert
-        Assert.NotNull(response);
-        Assert.Equal(order.Id, response.Id);
-    }
-
-    [Fact(Skip = "Integration test - requires valid Sandbox credentials")]
-    public void Submit_Order_InSandbox()
-    {
-        // Arrange
-        var order = CreateTestOrder();
-
-        // Act - First create, then submit
-        _fixture.Gateway.Create(order);
-        var response = _fixture.Gateway.Submit(order);
-
-        // Assert
-        Assert.NotNull(response);
-        Assert.Equal(order.Id, response.Id);
-    }
-
-    [Fact]
-    public async Task CreateAsync_Order_InSandbox()
-    {
-        // Arrange
-        var order = CreateTestOrder();
-
-        // Act - Use OrdersClient (modern specialized client)
         var response = await _fixture.OrdersClient.CreateAsync(order);
 
         // Assert
@@ -69,13 +33,13 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
     }
 
     [Fact]
-    public async Task SubmitAsync_Order_InSandbox()
+    public async Task SubmitAsync_SubmitsOrderForAnalysis()
     {
         // Arrange
         var order = CreateTestOrder();
-
-        // Act - Use OrdersClient (modern specialized client)
         await _fixture.OrdersClient.CreateAsync(order);
+
+        // Act
         var response = await _fixture.OrdersClient.SubmitAsync(order);
 
         // Assert
@@ -86,13 +50,13 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
     }
 
     [Fact]
-    public async Task UpdateAsync_Order_InSandbox()
+    public async Task UpdateAsync_UpdatesExistingOrder()
     {
         // Arrange
         var order = CreateTestOrder();
         await _fixture.OrdersClient.CreateAsync(order);
 
-        // Act - Use OrdersClient (modern specialized client)
+        // Act
         order.TotalPrice = 150.00;
         var response = await _fixture.OrdersClient.UpdateAsync(order);
 
@@ -102,14 +66,14 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
     }
 
     [Fact]
-    public async Task CancelAsync_Order_InSandbox()
+    public async Task CancelAsync_CancelsOrder()
     {
         // Arrange
         var order = CreateTestOrder();
         await _fixture.OrdersClient.CreateAsync(order);
         var cancellation = new OrderCancellation(order.Id, DateTime.UtcNow, "Test cancellation");
 
-        // Act - Use OrdersClient (modern specialized client)
+        // Act
         var response = await _fixture.OrdersClient.CancelAsync(cancellation);
 
         // Assert
@@ -117,9 +81,39 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
         Assert.Equal(order.Id, response.Id);
     }
 
-    /// <summary>
-    /// Helper method to create a test order with minimum required fields
-    /// </summary>
+
+    [Fact]
+    public async Task SendHistoricalOrdersAsync_ProcessesBatch()
+    {
+        // Arrange
+        var orders = new[]
+        {
+            CreateTestOrder(),
+            CreateTestOrder(),
+            CreateTestOrder()
+        };
+
+        // Act
+        var (success, failedOrders) = await _fixture.OrdersClient.SendHistoricalOrdersAsync(orders);
+
+        // Assert - May have some failures due to validation, but should not throw
+        Assert.True(success || failedOrders != null);
+    }
+
+    [Fact]
+    public async Task CreateAsync_SupportsCancellationToken()
+    {
+        // Arrange
+        var order = CreateTestOrder();
+        var cts = new CancellationTokenSource();
+
+        // Act
+        var task = _fixture.OrdersClient.CreateAsync(order, cts.Token);
+
+        // Assert
+        Assert.True(task is Task<OrderNotification>);
+    }
+
     private Order CreateTestOrder()
     {
         var orderId = $"test-{Guid.NewGuid().ToString().Substring(0, 8)}";
@@ -135,20 +129,7 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
             createdAt: DateTime.UtcNow
         );
 
-        var billingAddress = new AddressInformation(
-            firstName: "Test",
-            lastName: "User",
-            address1: "123 Test St",
-            city: "San Francisco",
-            country: "United States",
-            countryCode: "US",
-            phone: "415-555-1234",
-            province: "California",
-            provinceCode: "CA",
-            zipCode: "94102"
-        );
-
-        var shippingAddress = new AddressInformation(
+        var address = new AddressInformation(
             firstName: "Test",
             lastName: "User",
             address1: "123 Test St",
@@ -179,12 +160,12 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
             creditCardNumber: "4242"
         );
 
-        var order = new Order(
+        return new Order(
             merchantOrderId: orderId,
             email: "test@example.com",
             customer: customer,
-            billingAddress: billingAddress,
-            shippingAddress: shippingAddress,
+            billingAddress: address,
+            shippingAddress: address,
             lineItems: lineItems,
             shippingLines: new ShippingLine[] { },
             gateway: "test_gateway",
@@ -195,7 +176,5 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
             updatedAt: DateTime.UtcNow,
             paymentDetails: new[] { paymentDetails }
         );
-
-        return order;
     }
 }

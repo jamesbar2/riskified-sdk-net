@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Riskified.SDK.Clients;
 using Riskified.SDK.Orders;
 using Riskified.SDK.Utils;
 
@@ -12,6 +13,11 @@ public sealed class RiskifiedTestFixture : IAsyncLifetime
 {
     public IConfiguration Configuration { get; private set; }
     public OrdersGateway Gateway { get; private set; }
+
+    // New specialized clients
+    public OrdersClient OrdersClient { get; private set; }
+    public CheckoutClient CheckoutClient { get; private set; }
+    public AccountClient AccountClient { get; private set; }
 
     public string MerchantDomain { get; private set; }
     public string AuthToken { get; private set; }
@@ -38,8 +44,13 @@ public sealed class RiskifiedTestFixture : IAsyncLifetime
         var envString = Configuration["Riskified:RiskifiedEnvironment"] ?? "Sandbox";
         Environment = Enum.Parse<RiskifiedEnvironment>(envString);
 
-        // Initialize OrdersGateway for integration tests
+        // Initialize legacy OrdersGateway for backward compat tests
         Gateway = new OrdersGateway(Environment, AuthToken, MerchantDomain);
+
+        // Initialize modern specialized clients
+        OrdersClient = new OrdersClient(Environment, AuthToken, MerchantDomain);
+        CheckoutClient = new CheckoutClient(Environment, AuthToken, MerchantDomain);
+        AccountClient = new AccountClient(Environment, AuthToken, MerchantDomain);
     }
 
     public Task InitializeAsync()

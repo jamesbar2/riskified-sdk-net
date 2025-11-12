@@ -4,6 +4,7 @@ using System.Net.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Riskified.SDK.Clients;
 using Riskified.SDK.Orders;
 
 namespace Riskified.SDK
@@ -80,11 +81,20 @@ namespace Riskified.SDK
         }
 
         /// <summary>
-        /// Adds Riskified SDK services (OrdersGateway, etc.)
+        /// Adds Riskified SDK client services
         /// </summary>
         private static IServiceCollection AddRiskifiedServices(this IServiceCollection services)
         {
+            // Register modern specialized clients (recommended)
+            services.AddSingleton<OrdersClient>();
+            services.AddSingleton<CheckoutClient>();
+            services.AddSingleton<AccountClient>();
+            services.AddSingleton<DecoClient>();
+            services.AddSingleton<OtpClient>();
+
+            // Register legacy OrdersGateway (backward compatibility)
             services.AddSingleton<OrdersGateway>();
+
             return services;
         }
     }

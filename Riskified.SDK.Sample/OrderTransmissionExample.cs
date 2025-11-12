@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Riskified.SDK.Clients;
 using Riskified.SDK.Model;
 using Riskified.SDK.Model.ChargebackElements;
 using Riskified.SDK.Model.OrderElements;
@@ -1064,12 +1065,12 @@ namespace Riskified.SDK.Sample
         #region Async Example (Modern API - Recommended)
 
         /// <summary>
-        /// Example demonstrating modern async/await usage with the Riskified SDK
+        /// Example demonstrating modern async/await usage with specialized Riskified clients
         /// This is the recommended approach for new integrations
         /// </summary>
         public static async Task SendOrdersToRiskifiedAsyncExample()
         {
-            Console.WriteLine("=== Modern Async API Example ===\n");
+            Console.WriteLine("=== Modern Async API Example (Specialized Clients) ===\n");
 
             #region preprocessing and loading config
 
@@ -1082,22 +1083,22 @@ namespace Riskified.SDK.Sample
 
             #endregion
 
-            #region create and initialize OrdersGateway
+            #region create and initialize specialized clients
 
-            var gateway = new OrdersGateway(riskifiedEnv, authToken, domain);
-            Console.WriteLine($"Initialized OrdersGateway for environment: {riskifiedEnv}");
+            var ordersClient = new OrdersClient(riskifiedEnv, authToken, domain);
+            Console.WriteLine($"Initialized OrdersClient for environment: {riskifiedEnv}");
+            Console.WriteLine("Using specialized clients for better separation of concerns\n");
 
             #endregion
 
-            #region Create Order using async API
+            #region Create Order using OrdersClient
 
-            Console.WriteLine("\n--- Creating Order (Async) ---");
+            Console.WriteLine("\n--- Creating Order (OrdersClient) ---");
             var order = GenerateOrder(orderNum);
 
             try
             {
-                // Use async method - non-blocking I/O
-                var createResponse = await gateway.CreateAsync(order);
+                var createResponse = await ordersClient.CreateAsync(order);
                 Console.WriteLine($"Order Created: {createResponse.Id}, Status: {createResponse.Status}");
             }
             catch (Exception ex)
@@ -1107,16 +1108,15 @@ namespace Riskified.SDK.Sample
 
             #endregion
 
-            #region Submit Order using async API
+            #region Submit Order using OrdersClient
 
-            Console.WriteLine("\n--- Submitting Order (Async) ---");
+            Console.WriteLine("\n--- Submitting Order (OrdersClient) ---");
             orderNum++;
             order = GenerateOrder(orderNum);
 
             try
             {
-                // Use async method - non-blocking I/O
-                var submitResponse = await gateway.SubmitAsync(order);
+                var submitResponse = await ordersClient.SubmitAsync(order);
                 Console.WriteLine($"Order Submitted: {submitResponse.Id}, Status: {submitResponse.Status}, Description: {submitResponse.Description}");
             }
             catch (Exception ex)
@@ -1126,15 +1126,14 @@ namespace Riskified.SDK.Sample
 
             #endregion
 
-            #region Update Order using async API
+            #region Update Order using OrdersClient
 
-            Console.WriteLine("\n--- Updating Order (Async) ---");
+            Console.WriteLine("\n--- Updating Order (OrdersClient) ---");
 
             try
             {
-                // Modify order and update
                 order.TotalPrice = 150.00;
-                var updateResponse = await gateway.UpdateAsync(order);
+                var updateResponse = await ordersClient.UpdateAsync(order);
                 Console.WriteLine($"Order Updated: {updateResponse.Id}, Status: {updateResponse.Status}");
             }
             catch (Exception ex)
@@ -1144,14 +1143,14 @@ namespace Riskified.SDK.Sample
 
             #endregion
 
-            #region Cancel Order using async API
+            #region Cancel Order using OrdersClient
 
-            Console.WriteLine("\n--- Canceling Order (Async) ---");
+            Console.WriteLine("\n--- Canceling Order (OrdersClient) ---");
             var cancellation = new OrderCancellation(order.Id, DateTime.UtcNow, "Customer request");
 
             try
             {
-                var cancelResponse = await gateway.CancelAsync(cancellation);
+                var cancelResponse = await ordersClient.CancelAsync(cancellation);
                 Console.WriteLine($"Order Canceled: {cancelResponse.Id}, Status: {cancelResponse.Status}");
             }
             catch (Exception ex)
@@ -1161,9 +1160,9 @@ namespace Riskified.SDK.Sample
 
             #endregion
 
-            #region Send Historical Orders using async API
+            #region Send Historical Orders using OrdersClient
 
-            Console.WriteLine("\n--- Sending Historical Orders (Async) ---");
+            Console.WriteLine("\n--- Sending Historical Orders (OrdersClient) ---");
             var historicalOrders = new[]
             {
                 GenerateOrder(rand.Next(1000, 200000)),
@@ -1173,8 +1172,7 @@ namespace Riskified.SDK.Sample
 
             try
             {
-                // Modern tuple return instead of out parameter
-                var (success, failedOrders) = await gateway.SendHistoricalOrdersAsync(historicalOrders);
+                var (success, failedOrders) = await ordersClient.SendHistoricalOrdersAsync(historicalOrders);
 
                 if (success)
                 {
