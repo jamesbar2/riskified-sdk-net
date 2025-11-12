@@ -45,6 +45,10 @@
 
     <!-- HttpClient factory for modern HTTP communication -->
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+
+    <!-- Dependency injection and configuration support -->
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">

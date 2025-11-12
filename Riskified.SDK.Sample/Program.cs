@@ -28,6 +28,19 @@ namespace Riskified.SDK.Sample
             }
             #endregion
 
+            # region dependency injection example
+            if (args.Length > 0 && args[0] == "di")
+            {
+                await DependencyInjectionExample.RunDependencyInjectionExample();
+                return 0;
+            }
+            if (args.Length > 0 && args[0] == "di-patterns")
+            {
+                DependencyInjectionExample.ShowDependencyInjectionPatterns();
+                return 0;
+            }
+            #endregion
+
             # region notification example
 
             NotificationServerExample.ReceiveNotificationsExample();

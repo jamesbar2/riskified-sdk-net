@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Options;
 using Riskified.SDK.Exceptions;
 using Riskified.SDK.Model;
 using Riskified.SDK.Utils;
@@ -25,13 +26,27 @@ namespace Riskified.SDK.Orders
         private readonly Validations _validationMode;
 
         /// <summary>
+        /// Creates OrdersGateway from IOptions (for dependency injection)
+        /// Recommended for ASP.NET Core and modern .NET applications
+        /// </summary>
+        /// <param name="options">Riskified configuration options</param>
+        public OrdersGateway(IOptions<RiskifiedOptions> options)
+            : this(
+                options?.Value?.Environment ?? throw new ArgumentNullException(nameof(options)),
+                options.Value.MerchantAuthenticationToken ?? throw new ArgumentException("MerchantAuthenticationToken is required", nameof(options)),
+                options.Value.MerchantDomain ?? throw new ArgumentException("MerchantDomain is required", nameof(options)),
+                options.Value.ValidationMode)
+        {
+        }
+
+        /// <summary>
         /// Creates the mediator class used to send order data to Riskified
         /// </summary>
         /// <param name="env">The Riskified environment to send to</param>
         /// <param name="authToken">The merchant's auth token</param>
         /// <param name="shopDomain">The merchant's shop domain</param>
         public OrdersGateway(RiskifiedEnvironment env, string authToken, string shopDomain) : this(env,authToken,shopDomain,Validations.All)
-        {            
+        {
         }
 
         /// <summary>
