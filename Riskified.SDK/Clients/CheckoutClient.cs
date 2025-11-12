@@ -62,24 +62,50 @@ namespace Riskified.SDK.Clients
         }
 
         /// <summary>
-        /// Processes checkout and creates order record
+        /// Processes checkout and creates order record for pre-authorization fraud screening.
+        /// Use before payment gateway authorization to get fraud assessment.
         /// </summary>
+        /// <param name="orderCheckout">Checkout data including cart and customer information</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification with fraud assessment</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when checkout validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// Call before payment authorization to screen transactions.
+        /// Helps prevent fraudulent authorizations and reduce costs.
+        /// </remarks>
         public async Task<OrderNotification> CheckoutAsync(OrderCheckout orderCheckout, CancellationToken cancellationToken = default)
         {
             return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_create"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Requests pre-checkout fraud screening (Screen/PSD2)
+        /// Requests proactive pre-checkout fraud screening (Screen product).
+        /// Provides fraud assessment before customer enters payment gateway, reducing friction.
         /// </summary>
+        /// <param name="orderCheckout">Checkout data for fraud screening</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification with fraud risk assessment</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when checkout validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// Screen provides proactive fraud review before checkout.
+        /// Also supports PSD2/SCA optimization to reduce authentication friction.
+        /// </remarks>
         public async Task<OrderNotification> AdviseAsync(OrderCheckout orderCheckout, CancellationToken cancellationToken = default)
         {
             return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/advise"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Reports denied checkout (authorization failure)
+        /// Reports denied checkout when payment gateway declines authorization.
+        /// Notifies Riskified of authorization failures for analytics and reporting.
         /// </summary>
+        /// <param name="orderCheckout">Checkout denial details</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification confirming denial recorded</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
         public async Task<OrderNotification> CheckoutDeniedAsync(OrderCheckoutDenied orderCheckout, CancellationToken cancellationToken = default)
         {
             return await SendOrderCheckoutAsync(orderCheckout, HttpUtils.BuildUrl(_env, "/api/checkout_denied"), cancellationToken).ConfigureAwait(false);

@@ -71,80 +71,160 @@ namespace Riskified.SDK.Clients
         }
 
         /// <summary>
-        /// Creates a new order without submitting for analysis
+        /// Creates a new order record without submitting for fraud analysis.
+        /// Use this for post-authorization order creation when you want to track the order but analyze it later.
         /// </summary>
+        /// <param name="order">The order to create with complete transaction details</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification containing status and order ID</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when order validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// Use Create when you want to register an order without immediate fraud analysis.
+        /// Follow with Submit when ready for analysis.
+        /// See: https://apiref.riskified.com
+        /// </remarks>
         public async Task<OrderNotification> CreateAsync(Order order, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/create"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Submits an order for fraud analysis
+        /// Submits an order for fraud analysis. This is the primary method for fraud prevention.
+        /// Riskified will analyze the order and send decision via webhook (async) or return immediately (sync plans).
         /// </summary>
+        /// <param name="order">The order to submit for fraud analysis</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification with initial status (final decision via webhook)</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when order validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// This is the main fraud prevention endpoint. Use for all orders requiring fraud analysis.
+        /// Async plans: Decision sent via webhook. Sync plans: Decision in response.
+        /// </remarks>
         public async Task<OrderNotification> SubmitAsync(Order order, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/submit"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Updates an existing order
+        /// Updates an existing order with new information.
+        /// Use when order details change after initial creation/submission.
         /// </summary>
+        /// <param name="order">The order with updated information (must include order ID)</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification confirming the update</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when order validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
         public async Task<OrderNotification> UpdateAsync(Order order, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/update"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Requests synchronous fraud decision
+        /// Requests synchronous fraud decision (available on sync plans only).
+        /// Blocks and returns immediate fraud decision without webhook callback.
         /// </summary>
+        /// <param name="order">The order to analyze</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification with immediate fraud decision</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when order validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// Only available for merchants with synchronous review plans.
+        /// Returns immediate approve/decline decision in the response.
+        /// </remarks>
         public async Task<OrderNotification> DecideAsync(Order order, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(order, HttpUtils.BuildUrl(_env, "/api/decide", FlowStrategy.Sync), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Cancels an order
+        /// Notifies Riskified of order cancellation for charge fee adjustments.
+        /// Call this when an order is fully cancelled or refunded.
         /// </summary>
+        /// <param name="orderCancellation">Cancellation details including order ID, timestamp, and reason</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification confirming cancellation recorded</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
         public async Task<OrderNotification> CancelAsync(OrderCancellation orderCancellation, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(orderCancellation, HttpUtils.BuildUrl(_env, "/api/cancel"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Reports partial refund for an order
+        /// Reports partial refund for charge fee adjustments.
+        /// Use for partial refunds where order remains partially valid.
         /// </summary>
+        /// <param name="orderPartialRefund">Partial refund details including refunded items and amounts</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification confirming refund recorded</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
         public async Task<OrderNotification> PartlyRefundAsync(OrderPartialRefund orderPartialRefund, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(orderPartialRefund, HttpUtils.BuildUrl(_env, "/api/refund"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Reports order fulfillment/shipment
+        /// Reports order fulfillment with shipping/tracking information.
+        /// Call when order ships to update Riskified with fulfillment status.
         /// </summary>
+        /// <param name="orderFulfillment">Fulfillment details including tracking numbers and shipping info</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification confirming fulfillment recorded</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
         public async Task<OrderNotification> FulfillAsync(OrderFulfillment orderFulfillment, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(orderFulfillment, HttpUtils.BuildUrl(_env, "/api/fulfill"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Communicates merchant's decision on an order
+        /// Communicates merchant's external decision on an order.
+        /// Updates Riskified with your decision (approved/declined) for analytics and reporting.
         /// </summary>
+        /// <param name="orderDecision">Decision details with order ID and external status</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification confirming decision recorded</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
         public async Task<OrderNotification> DecisionAsync(OrderDecision orderDecision, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(orderDecision, HttpUtils.BuildUrl(_env, "/api/decision"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Reports chargeback event
+        /// Reports chargeback submission (contact Riskified support before first use).
+        /// Use to notify Riskified when a chargeback is filed against an order.
         /// </summary>
+        /// <param name="orderChargeback">Chargeback details including dispute information</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Order notification confirming chargeback recorded</returns>
+        /// <exception cref="OrderFieldBadFormatException">Thrown when validation fails</exception>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// Contact Riskified support before using this endpoint for the first time.
+        /// </remarks>
         public async Task<OrderNotification> ChargebackAsync(OrderChargeback orderChargeback, CancellationToken cancellationToken = default)
         {
             return await SendOrderAsync(orderChargeback, HttpUtils.BuildUrl(_env, "/api/chargeback"), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Sends historical orders in batches
+        /// Sends historical orders in batches for analysis.
+        /// Use during onboarding to submit past orders for baseline fraud analysis.
         /// </summary>
+        /// <param name="orders">Collection of historical orders (sent in batches of 10)</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Tuple with success status and dictionary of failed orders (if any)</returns>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// Orders are automatically batched (10 per request).
+        /// FinancialStatus field must contain the latest order status.
+        /// See: https://apiref.riskified.com for historical order requirements.
+        /// </remarks>
         public async Task<(bool Success, Dictionary<string, string> FailedOrders)> SendHistoricalOrdersAsync(
             IEnumerable<Order> orders,
             CancellationToken cancellationToken = default)
