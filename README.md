@@ -1,39 +1,214 @@
-sdk_net
-=======
+# Riskified .NET SDK
 
-An implementation of the Riskified API in C# for .NET  
-Refer to the [documentation](http://apiref.riskified.com) for more details.
+Modern .NET SDK for the Riskified fraud prevention platform. Supports .NET Standard 2.0, .NET 6, and .NET 8 with full async/await, HttpClient, and dependency injection support.
 
-Running the sample code
------------------------
-All examples are at the _Riskified.SDK.Sample_ folder. For the basics:
+**Version:** 5.0.0
+**API Documentation:** [apiref.riskified.com](http://apiref.riskified.com)
 
-1. Copy the ```Riskified.SDK.Sample.config.example``` and rename to ```Riskified.SDK.Sample.config```
-1. Edit ```Riskified.SDK.Sample.config``` to include your credentials: 
-  - **MerchantDomain** - The same domain you use for login at riskified.com
-  - **MerchantAuthenticationToken** - The one you will see in the 'Settings'->'Advanced Settings' tab in the Riskified webapp
-  - **RiskifiedEnvironment** - `Sandbox` for Sandbox testing or `Production` for Production live work
-1. Build and run the sample project executable
+## Features
 
-If you wish to send your own data - Change the model object (Order) in the ```OrderTransmissionExample.cs``` [GenerateOrder method] (https://github.com/Riskified/sdk_net/blob/master/Riskified.SDK.Sample/OrderTransmissionExample.cs#L93)
+- ✅ **Cross-Platform:** Linux, macOS, Windows (including ARM64)
+- ✅ **Modern HTTP:** HttpClient + IHttpClientFactory (no deprecated APIs)
+- ✅ **Async/Await:** Full async API surface for non-blocking I/O
+- ✅ **Dependency Injection:** IOptions and IServiceCollection support
+- ✅ **Multi-Targeting:** netstandard2.0, net6.0, net8.0
+- ✅ **Production Ready:** Validated against Riskified Sandbox API
+- ✅ **Comprehensive Tests:** Including live integration tests
 
+## Installation
 
-Migrating from older versions (prior to: API v2 - v2.0.0.0)
------------------------------------------------------------
+```bash
+dotnet add package Riskified.SDK
+```
 
-API Version 2 introduces new features (and breaks some old ones).  
+## Quick Start
 
-### Orders Gateway ###
+### Simple Usage
 
-This version represents a shift from data-driven order handling to multiple API endpoints and introduces some new Model objects.  
-Each endpoint/method designed for a specific purpose:
+```csharp
+using Riskified.SDK.Orders;
+using Riskified.SDK.Utils;
 
-* `/Create` - served by `ordersGateway.Create(Order)`
-* `/Update` - served by `ordersGateway.Update(Order)`
-* `/Submit` - served by `ordersGateway.Submit(Order)`
-* `/Refund` - served by `ordersGateway.PartlyRefund(OrderPartialRefund)`
-* `/Cancel` - served by `ordersGateway.Cancel(OrderCancellation)`
-* `/historical` - served by `ordersGateway.SendHistoricalOrders(Orders)`
+// Initialize gateway
+var gateway = new OrdersGateway(
+    RiskifiedEnvironment.Sandbox,
+    authToken: "your-auth-token",
+    shopDomain: "your-shop.myshopify.com"
+);
 
-When migrating from version 1, you'll need to separate the different calls to Riskified's API to support this new process.
+// Submit order asynchronously (recommended)
+var order = new Order(...);
+var response = await gateway.SubmitAsync(order);
 
+Console.WriteLine($"Order {response.Id}: {response.Status}");
+```
+
+### ASP.NET Core with Dependency Injection (Recommended)
+
+**1. Configure in `appsettings.json`:**
+
+```json
+{
+  "Riskified": {
+    "MerchantDomain": "your-shop.myshopify.com",
+    "MerchantAuthenticationToken": "your-auth-token",
+    "Environment": "Production"
+  }
+}
+```
+
+**2. Register services in `Program.cs`:**
+
+```csharp
+builder.Services.AddRiskified(
+    builder.Configuration.GetSection("Riskified")
+);
+```
+
+This will automatically bind options from the configuration section, configure a named `HttpClient` for Riskified with proper connection pooling, and register `OrdersGateway` as a singleton.
+
+**3. Inject into your services:**
+
+```csharp
+public class PaymentService
+{
+    private readonly OrdersGateway _riskified;
+
+    public PaymentService(OrdersGateway riskified)
+    {
+        _riskified = riskified;
+    }
+
+    public async Task<OrderNotification> ProcessOrder(Order order)
+    {
+        var response = await _riskified.SubmitAsync(order);
+        return response;
+    }
+}
+```
+
+`OrdersGateway` is comfortable being used as a singleton in this manner.
+
+## Configuration Options
+
+### IHttpClientFactory
+
+The SDK supports `IHttpClientFactory` for correct usage of `HttpClient`, as described in [Microsoft's documentation](https://docs.microsoft.com/en-us/dotnet/architecture/microservices/implement-resilient-applications/use-httpclientfactory-to-implement-resilient-http-requests).
+
+When you call `.AddRiskified()`, it automatically configures a named `HttpClient` with proper connection pooling and lifecycle management. If you need to customize your DI structure, you can call `services.AddRiskifiedHttpClient()` separately.
+
+### IOptions Support
+
+The SDK supports configuration from any source via the `IOptions` pattern. You can provide any configuration section to `.AddRiskified()` and options will be automatically bound.
+
+Alternatively, configure options manually:
+
+```csharp
+services.Configure<RiskifiedOptions>(options =>
+{
+    options.MerchantDomain = "your-shop.myshopify.com";
+    options.MerchantAuthenticationToken = "your-token";
+    options.Environment = RiskifiedEnvironment.Production;
+});
+services.AddSingleton<OrdersGateway>();
+```
+
+## API Methods
+
+All methods have both synchronous and async variants. **Async methods are recommended** for production.
+
+### Order Operations
+
+```csharp
+await gateway.CreateAsync(order);        // Create without submission
+await gateway.SubmitAsync(order);        // Submit for analysis
+await gateway.UpdateAsync(order);        // Update existing order
+await gateway.DecideAsync(order);        // Get synchronous decision
+await gateway.CancelAsync(cancellation); // Cancel order
+await gateway.PartlyRefundAsync(refund); // Partial refund
+await gateway.FulfillAsync(fulfillment); // Mark fulfilled
+```
+
+### Checkout Operations
+
+```csharp
+await gateway.CheckoutAsync(orderCheckout);
+await gateway.AdviseAsync(orderCheckout);
+await gateway.CheckoutDeniedAsync(orderCheckoutDenied);
+```
+
+### Account Actions
+
+```csharp
+await gateway.LoginAsync(login);
+await gateway.CustomerCreateAsync(customerCreate);
+await gateway.CustomerUpdateAsync(customerUpdate);
+await gateway.LogoutAsync(logout);
+// And more...
+```
+
+### Batch Operations
+
+```csharp
+var orders = new[] { order1, order2, order3 };
+var (success, failedOrders) = await gateway.SendHistoricalOrdersAsync(orders);
+```
+
+## Examples
+
+The SDK includes comprehensive examples in `Riskified.SDK.Sample`:
+
+```bash
+# Async example (recommended)
+dotnet run --project Riskified.SDK.Sample -- async
+
+# Dependency injection example
+dotnet run --project Riskified.SDK.Sample -- di
+
+# Show DI patterns
+dotnet run --project Riskified.SDK.Sample -- di-patterns
+
+# Legacy synchronous example
+dotnet run --project Riskified.SDK.Sample
+
+# Run all endpoints
+dotnet run --project Riskified.SDK.Sample -- run_all
+```
+
+## Testing
+
+```bash
+dotnet test
+```
+
+For integration tests, see `Riskified.SDK.Tests/USER_SECRETS_DEMO.md` for secure credential setup.
+
+## Framework Support
+
+| Framework | Supported |
+|-----------|-----------|
+| .NET 8 | ✅ |
+| .NET 6 | ✅ |
+| .NET Standard 2.0 | ✅ |
+| .NET Framework 4.6.1+ | ✅ |
+| .NET Framework 4.5.1 | ❌ (use v4.x) |
+
+## Migration from v4.x to v5.0
+
+See `MODERNIZATION_ROADMAP.md` for complete migration guide.
+
+**Key Changes:**
+- Minimum framework: .NET Framework 4.6.1 or .NET Core 2.0+
+- Configuration: App.config → appsettings.json
+- New: Async/await methods (recommended)
+- New: Dependency injection support
+- Updated: Newtonsoft.Json 13.0.3
+
+**Backward Compatibility:**
+All existing synchronous methods still work. Async methods are additive.
+
+## Documentation
+
+- **MODERNIZATION_ROADMAP.md** - Modernization plan and progress
+- **Riskified.SDK.Tests/README.md** - Testing guide
+- **Riskified.SDK.Tests/USER_SECRETS_DEMO.md** - Secure credentials setup

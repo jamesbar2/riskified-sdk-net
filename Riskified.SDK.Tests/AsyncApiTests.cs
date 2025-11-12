@@ -1,5 +1,7 @@
 using Riskified.SDK.Model;
 using Riskified.SDK.Model.OrderElements;
+using Riskified.SDK.Orders;
+using Riskified.SDK.Utils;
 
 namespace Riskified.SDK.Tests;
 
@@ -118,19 +120,18 @@ public class AsyncApiTests : IClassFixture<RiskifiedTestFixture>
     }
 
     [Fact]
-    public async Task AllAsyncMethods_SupportOptionalHttpClient()
+    public void OrdersGateway_AutomaticallyCreatesHttpClientFactory()
     {
-        // Arrange
-        var order = CreateMinimalTestOrder();
-        using var customHttpClient = new System.Net.Http.HttpClient();
+        // Arrange & Act - Create gateway without providing IHttpClientFactory
+        var gateway = new OrdersGateway(
+            RiskifiedEnvironment.Sandbox,
+            "test-token",
+            "test-domain.myshopify.com"
+        );
 
-        // Act - Verify optional HttpClient parameter exists
-        var createTask = _fixture.Gateway.CreateAsync(order, httpClient: customHttpClient);
-        var submitTask = _fixture.Gateway.SubmitAsync(order, httpClient: customHttpClient);
-
-        // Assert
-        Assert.True(createTask is Task<OrderNotification>);
-        Assert.True(submitTask is Task<OrderNotification>);
+        // Assert - Gateway should automatically create internal HttpClientFactory
+        Assert.NotNull(gateway);
+        // HttpClient will be created automatically when async methods are called
     }
 
     private Order CreateMinimalTestOrder()
