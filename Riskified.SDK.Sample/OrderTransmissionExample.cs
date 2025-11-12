@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Configuration;
 using Riskified.SDK.Model;
 using Riskified.SDK.Model.ChargebackElements;
 using Riskified.SDK.Model.OrderElements;
@@ -21,9 +20,9 @@ namespace Riskified.SDK.Sample
         {
             #region preprocessing and loading config
 
-            string domain = ConfigurationManager.AppSettings["MerchantDomain"];
-            string authToken = ConfigurationManager.AppSettings["MerchantAuthenticationToken"];
-            RiskifiedEnvironment riskifiedEnv = (RiskifiedEnvironment)Enum.Parse(typeof(RiskifiedEnvironment), ConfigurationManager.AppSettings["RiskifiedEnvironment"]);
+            string domain = ConfigurationHelper.GetRiskifiedSetting("MerchantDomain");
+            string authToken = ConfigurationHelper.GetRiskifiedSetting("MerchantAuthenticationToken");
+            RiskifiedEnvironment riskifiedEnv = (RiskifiedEnvironment)Enum.Parse(typeof(RiskifiedEnvironment), ConfigurationHelper.GetRiskifiedSetting("RiskifiedEnvironment"));
 
             // Generating a random starting order number
             // we need to send the order with a new order number in order to create it on riskified
@@ -1067,9 +1066,9 @@ namespace Riskified.SDK.Sample
         {
             try
             {
-                string domain = ConfigurationManager.AppSettings["MerchantDomain"];
-                string authToken = ConfigurationManager.AppSettings["MerchantAuthenticationToken"];
-                RiskifiedEnvironment riskifiedEnv = (RiskifiedEnvironment)Enum.Parse(typeof(RiskifiedEnvironment), ConfigurationManager.AppSettings["RiskifiedEnvironment"]);
+                string domain = ConfigurationHelper.GetRiskifiedSetting("MerchantDomain");
+                string authToken = ConfigurationHelper.GetRiskifiedSetting("MerchantAuthenticationToken");
+                RiskifiedEnvironment riskifiedEnv = (RiskifiedEnvironment)Enum.Parse(typeof(RiskifiedEnvironment), ConfigurationHelper.GetRiskifiedSetting("RiskifiedEnvironment"));
 
                 OrderNotification res = null;
                 var rand = new Random();
