@@ -258,17 +258,17 @@ public class OrdersGateway
 
 ---
 
-### Phase 6: Modern Logging Infrastructure
-**Branch:** `jbarnett/6-logging`
+### Phase 6: Final Polish & Code Quality
+**Branch:** `jbarnett/6-final-polish`
 **PR Target:** `jbarnett/5-client-separation`
+**Status:** 🔄 **IN PROGRESS**
 
 **Objectives:**
-- Replace custom ILogger with Microsoft.Extensions.Logging.ILogger
-- Remove static LoggingServices service locator
-- Inject ILogger<T> via dependency injection
-- Add structured logging with proper log levels
-- Support NullLogger for non-DI scenarios
-- Maintain backward compatibility via adapter pattern
+- Enable nullable reference types across codebase
+- Clean up compiler warnings
+- Add XML documentation to public APIs
+- Update README with specialized client examples
+- Final code quality improvements
 
 **Logging Pattern:**
 ```csharp
