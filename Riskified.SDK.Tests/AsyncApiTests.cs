@@ -1,5 +1,7 @@
 using Riskified.SDK.Model;
 using Riskified.SDK.Model.OrderElements;
+using Riskified.SDK.Orders;
+using Riskified.SDK.Utils;
 
 namespace Riskified.SDK.Tests;
 
