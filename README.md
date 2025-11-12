@@ -23,22 +23,22 @@ dotnet add package Riskified.SDK
 
 ## Quick Start
 
-### Simple Usage
+### Simple Usage (Recommended)
 
 ```csharp
-using Riskified.SDK.Orders;
+using Riskified.SDK.Clients;
 using Riskified.SDK.Utils;
 
-// Initialize gateway
-var gateway = new OrdersGateway(
+// Initialize OrdersClient for order operations
+var ordersClient = new OrdersClient(
     RiskifiedEnvironment.Sandbox,
     authToken: "your-auth-token",
     shopDomain: "your-shop.myshopify.com"
 );
 
-// Submit order asynchronously (recommended)
+// Submit order asynchronously
 var order = new Order(...);
-var response = await gateway.SubmitAsync(order);
+var response = await ordersClient.SubmitAsync(order);
 
 Console.WriteLine($"Order {response.Id}: {response.Status}");
 ```
@@ -67,27 +67,35 @@ builder.Services.AddRiskified(
 
 This will automatically bind options from the configuration section, configure a named `HttpClient` for Riskified with proper connection pooling, and register `OrdersGateway` as a singleton.
 
-**3. Inject into your services:**
+**3. Inject specialized clients into your services:**
 
 ```csharp
+using Riskified.SDK.Clients;
+
 public class PaymentService
 {
-    private readonly OrdersGateway _riskified;
+    private readonly OrdersClient _orders;
+    private readonly CheckoutClient _checkout;
 
-    public PaymentService(OrdersGateway riskified)
+    public PaymentService(OrdersClient orders, CheckoutClient checkout)
     {
-        _riskified = riskified;
+        _orders = orders;
+        _checkout = checkout;
     }
 
-    public async Task<OrderNotification> ProcessOrder(Order order)
+    public async Task<OrderNotification> ProcessPayment(Order order)
     {
-        var response = await _riskified.SubmitAsync(order);
+        // Pre-checkout screening (optional)
+        var checkoutResponse = await _checkout.AdviseAsync(orderCheckout);
+
+        // Submit order for fraud analysis
+        var response = await _orders.SubmitAsync(order);
         return response;
     }
 }
 ```
 
-`OrdersGateway` is comfortable being used as a singleton in this manner.
+All specialized clients are comfortable being used as singletons in this manner.
 
 ## Configuration Options
 
@@ -113,45 +121,84 @@ services.Configure<RiskifiedOptions>(options =>
 services.AddSingleton<OrdersGateway>();
 ```
 
-## API Methods
+## Specialized Clients (Recommended)
 
-All methods have both synchronous and async variants. **Async methods are recommended** for production.
+The SDK provides focused clients for each API domain following the Single Responsibility Principle.
 
-### Order Operations
+### OrdersClient - Order Lifecycle Operations
 
 ```csharp
-await gateway.CreateAsync(order);        // Create without submission
-await gateway.SubmitAsync(order);        // Submit for analysis
-await gateway.UpdateAsync(order);        // Update existing order
-await gateway.DecideAsync(order);        // Get synchronous decision
-await gateway.CancelAsync(cancellation); // Cancel order
-await gateway.PartlyRefundAsync(refund); // Partial refund
-await gateway.FulfillAsync(fulfillment); // Mark fulfilled
+using Riskified.SDK.Clients;
+
+var ordersClient = new OrdersClient(env, authToken, shopDomain);
+
+await ordersClient.CreateAsync(order);        // Create without submission
+await ordersClient.SubmitAsync(order);        // Submit for analysis
+await ordersClient.UpdateAsync(order);        // Update existing order
+await ordersClient.DecideAsync(order);        // Get synchronous decision
+await ordersClient.CancelAsync(cancellation); // Cancel order
+await ordersClient.PartlyRefundAsync(refund); // Partial refund
+await ordersClient.FulfillAsync(fulfillment); // Mark fulfilled
+await ordersClient.DecisionAsync(decision);   // Report merchant decision
+await ordersClient.ChargebackAsync(chargeback); // Report chargeback
+
+// Batch operations
+var (success, failedOrders) = await ordersClient.SendHistoricalOrdersAsync(orders);
 ```
 
-### Checkout Operations
+### CheckoutClient - Pre-Checkout Operations
 
 ```csharp
-await gateway.CheckoutAsync(orderCheckout);
-await gateway.AdviseAsync(orderCheckout);
-await gateway.CheckoutDeniedAsync(orderCheckoutDenied);
+using Riskified.SDK.Clients;
+
+var checkoutClient = new CheckoutClient(env, authToken, shopDomain);
+
+await checkoutClient.CheckoutAsync(orderCheckout);      // Process checkout
+await checkoutClient.AdviseAsync(orderCheckout);        // Pre-checkout screening
+await checkoutClient.CheckoutDeniedAsync(checkoutDenied); // Report denial
 ```
 
-### Account Actions
+### AccountClient - Account Security Operations
 
 ```csharp
-await gateway.LoginAsync(login);
-await gateway.CustomerCreateAsync(customerCreate);
-await gateway.CustomerUpdateAsync(customerUpdate);
-await gateway.LogoutAsync(logout);
-// And more...
+using Riskified.SDK.Clients;
+
+var accountClient = new AccountClient(env, authToken, shopDomain);
+
+await accountClient.LoginAsync(login);
+await accountClient.LogoutAsync(logout);
+await accountClient.CustomerCreateAsync(customerCreate);
+await accountClient.CustomerUpdateAsync(customerUpdate);
+await accountClient.ResetPasswordRequestAsync(resetPasswordRequest);
+await accountClient.WishlistChangesAsync(wishlistChanges);
+await accountClient.RedeemAsync(redeem);
+await accountClient.CustomerReachOutAsync(customerReachOut);
 ```
 
-### Batch Operations
+### DecoClient & OtpClient
 
 ```csharp
-var orders = new[] { order1, order2, order3 };
-var (success, failedOrders) = await gateway.SendHistoricalOrdersAsync(orders);
+// Deco payment operations
+var decoClient = new DecoClient(env, authToken, shopDomain);
+await decoClient.EligibleAsync(orderIdOnly);
+await decoClient.OptInAsync(orderIdOnly);
+
+// OTP recovery operations
+var otpClient = new OtpClient(env, authToken, shopDomain);
+await otpClient.InitiateOtpAsync(otpInitiate);
+```
+
+## Legacy API (Backward Compatibility)
+
+**OrdersGateway** is still available but marked as obsolete. Use specialized clients instead.
+
+```csharp
+[Obsolete] // Will show deprecation warning
+var gateway = new OrdersGateway(env, authToken, shopDomain);
+
+// Synchronous methods still work (delegates to clients)
+var response = gateway.Create(order);
+var response = gateway.Submit(order);
 ```
 
 ## Examples
