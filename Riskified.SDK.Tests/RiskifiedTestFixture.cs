@@ -1,0 +1,56 @@
+using Microsoft.Extensions.Configuration;
+using Riskified.SDK.Orders;
+using Riskified.SDK.Utils;
+
+namespace Riskified.SDK.Tests;
+
+/// <summary>
+/// Test fixture for Riskified SDK tests
+/// Follows xUnit IAsyncLifetime pattern for async setup/teardown
+/// </summary>
+public sealed class RiskifiedTestFixture : IAsyncLifetime
+{
+    public IConfiguration Configuration { get; private set; }
+    public OrdersGateway Gateway { get; private set; }
+
+    public string MerchantDomain { get; private set; }
+    public string AuthToken { get; private set; }
+    public RiskifiedEnvironment Environment { get; private set; }
+
+    public RiskifiedTestFixture()
+    {
+        // Build configuration with multiple sources (priority: User Secrets > Env Vars > Local JSON > Base JSON)
+        Configuration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("testsettings.json", optional: false)
+            .AddJsonFile("testsettings.Local.json", optional: true) // For local JSON credentials (git-ignored)
+            .AddEnvironmentVariables() // Allow environment variable overrides
+            .AddUserSecrets<RiskifiedTestFixture>() // Secure local secrets (recommended)
+            .Build();
+
+        // Load Riskified configuration
+        MerchantDomain = Configuration["Riskified:MerchantDomain"]
+            ?? throw new InvalidOperationException("Missing Riskified:MerchantDomain in test configuration");
+
+        AuthToken = Configuration["Riskified:MerchantAuthenticationToken"]
+            ?? throw new InvalidOperationException("Missing Riskified:MerchantAuthenticationToken in test configuration");
+
+        var envString = Configuration["Riskified:RiskifiedEnvironment"] ?? "Sandbox";
+        Environment = Enum.Parse<RiskifiedEnvironment>(envString);
+
+        // Initialize OrdersGateway for integration tests
+        Gateway = new OrdersGateway(Environment, AuthToken, MerchantDomain);
+    }
+
+    public Task InitializeAsync()
+    {
+        // Async initialization if needed (e.g., create test data in sandbox)
+        return Task.CompletedTask;
+    }
+
+    public Task DisposeAsync()
+    {
+        // Async cleanup if needed
+        return Task.CompletedTask;
+    }
+}

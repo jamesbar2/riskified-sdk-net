@@ -1,0 +1,6 @@
+# Ignore test secrets files (contain credentials)
+testsettings.Local.json
+secrets.json
+
+# User Secrets are stored outside the repo automatically
+# Location: ~/.microsoft/usersecrets/riskified-sdk-tests-a1b2c3d4/
