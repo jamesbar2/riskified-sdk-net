@@ -53,6 +53,70 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
         Assert.Equal(order.Id, response.Id);
     }
 
+    [Fact]
+    public async Task CreateAsync_Order_InSandbox()
+    {
+        // Arrange
+        var order = CreateTestOrder();
+
+        // Act
+        var response = await _fixture.Gateway.CreateAsync(order);
+
+        // Assert
+        Assert.NotNull(response);
+        Assert.Equal(order.Id, response.Id);
+        Assert.NotNull(response.Status);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_Order_InSandbox()
+    {
+        // Arrange
+        var order = CreateTestOrder();
+
+        // Act - First create, then submit
+        await _fixture.Gateway.CreateAsync(order);
+        var response = await _fixture.Gateway.SubmitAsync(order);
+
+        // Assert
+        Assert.NotNull(response);
+        Assert.Equal(order.Id, response.Id);
+        Assert.NotNull(response.Status);
+        Assert.NotNull(response.Description);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Order_InSandbox()
+    {
+        // Arrange
+        var order = CreateTestOrder();
+        await _fixture.Gateway.CreateAsync(order);
+
+        // Act - Update the order
+        order.TotalPrice = 150.00;
+        var response = await _fixture.Gateway.UpdateAsync(order);
+
+        // Assert
+        Assert.NotNull(response);
+        Assert.Equal(order.Id, response.Id);
+    }
+
+    [Fact]
+    public async Task CancelAsync_Order_InSandbox()
+    {
+        // Arrange
+        var order = CreateTestOrder();
+        await _fixture.Gateway.CreateAsync(order);
+        var cancellation = new OrderCancellation(order.Id, DateTime.UtcNow, "Test cancellation");
+
+        // Act
+        var response = await _fixture.Gateway.CancelAsync(cancellation);
+
+        // Assert
+        Assert.NotNull(response);
+        Assert.Equal(order.Id, response.Id);
+    }
+
     /// <summary>
     /// Helper method to create a test order with minimum required fields
     /// </summary>
@@ -107,6 +171,14 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
             )
         };
 
+        var paymentDetails = new CreditCardPaymentDetails(
+            avsResultCode: "Y",
+            cvvResultCode: "M",
+            creditCardBin: "424242",
+            creditCardCompany: "Visa",
+            creditCardNumber: "4242"
+        );
+
         var order = new Order(
             merchantOrderId: orderId,
             email: "test@example.com",
@@ -120,7 +192,8 @@ public class OrdersGatewayTests : IClassFixture<RiskifiedTestFixture>
             currency: "USD",
             totalPrice: 100.00,
             createdAt: DateTime.UtcNow,
-            updatedAt: DateTime.UtcNow
+            updatedAt: DateTime.UtcNow,
+            paymentDetails: new[] { paymentDetails }
         );
 
         return order;
