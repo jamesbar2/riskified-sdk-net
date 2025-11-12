@@ -9,11 +9,11 @@ Modern .NET SDK for the Riskified fraud prevention platform. Supports .NET Stand
 
 - ✅ **Cross-Platform:** Linux, macOS, Windows (including ARM64)
 - ✅ **Modern HTTP:** HttpClient + IHttpClientFactory (no deprecated APIs)
-- ✅ **Async/Await:** 19 async methods for non-blocking I/O
-- ✅ **Dependency Injection:** Full IOptions and IServiceCollection support
+- ✅ **Async/Await:** Full async API surface for non-blocking I/O
+- ✅ **Dependency Injection:** IOptions and IServiceCollection support
 - ✅ **Multi-Targeting:** netstandard2.0, net6.0, net8.0
 - ✅ **Production Ready:** Validated against Riskified Sandbox API
-- ✅ **Comprehensive Tests:** 34 tests including live integration tests
+- ✅ **Comprehensive Tests:** Including live integration tests
 
 ## Installation
 
@@ -184,7 +184,3 @@ All existing synchronous methods still work. Async methods are additive.
 - **MODERNIZATION_ROADMAP.md** - Modernization plan and progress
 - **Riskified.SDK.Tests/README.md** - Testing guide
 - **Riskified.SDK.Tests/USER_SECRETS_DEMO.md** - Secure credentials setup
-
-## License
-
-Copyright © Riskified 2012-2025
