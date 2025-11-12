@@ -57,8 +57,17 @@ namespace Riskified.SDK.Clients
         }
 
         /// <summary>
-        /// Analyzes customer login attempt
+        /// Analyzes customer login attempt for account takeover prevention.
+        /// Core endpoint for Account Secure product - call on every login attempt.
         /// </summary>
+        /// <param name="login">Login details including customer ID, session data, and login result</param>
+        /// <param name="cancellationToken">Cancellation token for the async operation</param>
+        /// <returns>Account action notification with risk assessment</returns>
+        /// <exception cref="RiskifiedTransactionException">Thrown on network or server errors</exception>
+        /// <remarks>
+        /// Execute this on every active login to detect account takeover attempts.
+        /// Synchronous response provides immediate risk assessment.
+        /// </remarks>
         public async Task<AccountActionNotification> LoginAsync(Login login, CancellationToken cancellationToken = default)
         {
             return await SendAccountActionAsync(login, HttpUtils.BuildUrl(_env, "/customers/login", FlowStrategy.Account), cancellationToken).ConfigureAwait(false);
