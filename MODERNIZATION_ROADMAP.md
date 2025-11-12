@@ -45,6 +45,31 @@ This document outlines the comprehensive modernization plan for the Riskified .N
 - **0 unit tests**
 - **19 files** with unused Task imports
 
+## Versioning Strategy
+
+This modernization requires breaking changes that make the SDK incompatible with .NET Framework 4.5.1. We're adopting a clean break approach:
+
+**Version 2.0.0** - Modern .NET SDK
+- Target Frameworks: `netstandard2.0;net6.0;net8.0`
+- Minimum requirement: .NET Framework 4.6.1 or .NET Core 2.0+
+- Modern APIs: HttpClient, async/await, dependency injection
+
+**Version 1.x** - Legacy (archived, unsupported)
+- Remains available for .NET Framework 4.5.1 customers
+- No new features or bug fixes
+- Customers should upgrade to 2.0
+
+### Backward Compatibility Impact
+
+| Customer's Framework | Can Use v1.x | Can Use v2.0 | Recommendation |
+|---------------------|--------------|--------------|----------------|
+| .NET Framework 4.5.1 | ✅ Yes | ❌ No | Upgrade to .NET 4.6.1+ |
+| .NET Framework 4.6.1+ | ✅ Yes | ✅ Yes | Migrate to v2.0 |
+| .NET Core 2.0+ | ❌ No | ✅ Yes | Use v2.0 |
+| .NET 5, 6, 7, 8 | ❌ No | ✅ Yes | Use v2.0 |
+
+**Rationale:** .NET Framework 4.5.1 reached end-of-life in January 2016 (9 years ago). Major SDK vendors (AWS, Azure, etc.) dropped 4.5.1 support years ago. Customers still on 4.5.1 have significant technical debt and security risks.
+
 ## Modernization Strategy: 6-Phase Approach
 
 ### Phase 1: Foundation - Update Target Framework
