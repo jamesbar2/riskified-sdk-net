@@ -1061,6 +1061,144 @@ namespace Riskified.SDK.Sample
             return new CustomerReachOut(idString, contactMethod);
         }
 
+        #region Async Example (Modern API - Recommended)
+
+        /// <summary>
+        /// Example demonstrating modern async/await usage with the Riskified SDK
+        /// This is the recommended approach for new integrations
+        /// </summary>
+        public static async Task SendOrdersToRiskifiedAsyncExample()
+        {
+            Console.WriteLine("=== Modern Async API Example ===\n");
+
+            #region preprocessing and loading config
+
+            string domain = ConfigurationHelper.GetRiskifiedSetting("MerchantDomain");
+            string authToken = ConfigurationHelper.GetRiskifiedSetting("MerchantAuthenticationToken");
+            RiskifiedEnvironment riskifiedEnv = (RiskifiedEnvironment)Enum.Parse(typeof(RiskifiedEnvironment), ConfigurationHelper.GetRiskifiedSetting("RiskifiedEnvironment"));
+
+            var rand = new Random();
+            int orderNum = rand.Next(1000, 200000);
+
+            #endregion
+
+            #region create and initialize OrdersGateway
+
+            var gateway = new OrdersGateway(riskifiedEnv, authToken, domain);
+            Console.WriteLine($"Initialized OrdersGateway for environment: {riskifiedEnv}");
+
+            #endregion
+
+            #region Create Order using async API
+
+            Console.WriteLine("\n--- Creating Order (Async) ---");
+            var order = GenerateOrder(orderNum);
+
+            try
+            {
+                // Use async method - non-blocking I/O
+                var createResponse = await gateway.CreateAsync(order);
+                Console.WriteLine($"Order Created: {createResponse.Id}, Status: {createResponse.Status}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Create failed: {ex.Message}");
+            }
+
+            #endregion
+
+            #region Submit Order using async API
+
+            Console.WriteLine("\n--- Submitting Order (Async) ---");
+            orderNum++;
+            order = GenerateOrder(orderNum);
+
+            try
+            {
+                // Use async method - non-blocking I/O
+                var submitResponse = await gateway.SubmitAsync(order);
+                Console.WriteLine($"Order Submitted: {submitResponse.Id}, Status: {submitResponse.Status}, Description: {submitResponse.Description}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Submit failed: {ex.Message}");
+            }
+
+            #endregion
+
+            #region Update Order using async API
+
+            Console.WriteLine("\n--- Updating Order (Async) ---");
+
+            try
+            {
+                // Modify order and update
+                order.TotalPrice = 150.00;
+                var updateResponse = await gateway.UpdateAsync(order);
+                Console.WriteLine($"Order Updated: {updateResponse.Id}, Status: {updateResponse.Status}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Update failed: {ex.Message}");
+            }
+
+            #endregion
+
+            #region Cancel Order using async API
+
+            Console.WriteLine("\n--- Canceling Order (Async) ---");
+            var cancellation = new OrderCancellation(order.Id, DateTime.UtcNow, "Customer request");
+
+            try
+            {
+                var cancelResponse = await gateway.CancelAsync(cancellation);
+                Console.WriteLine($"Order Canceled: {cancelResponse.Id}, Status: {cancelResponse.Status}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Cancel failed: {ex.Message}");
+            }
+
+            #endregion
+
+            #region Send Historical Orders using async API
+
+            Console.WriteLine("\n--- Sending Historical Orders (Async) ---");
+            var historicalOrders = new[]
+            {
+                GenerateOrder(rand.Next(1000, 200000)),
+                GenerateOrder(rand.Next(1000, 200000)),
+                GenerateOrder(rand.Next(1000, 200000))
+            };
+
+            try
+            {
+                // Modern tuple return instead of out parameter
+                var (success, failedOrders) = await gateway.SendHistoricalOrdersAsync(historicalOrders);
+
+                if (success)
+                {
+                    Console.WriteLine($"All {historicalOrders.Length} historical orders sent successfully!");
+                }
+                else
+                {
+                    Console.WriteLine($"Some orders failed. Failed count: {failedOrders?.Count ?? 0}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Historical orders failed: {ex.Message}");
+            }
+
+            #endregion
+
+            Console.WriteLine("\n=== Async Example Complete ===");
+            Console.WriteLine("Press Enter to exit");
+            Console.ReadLine();
+        }
+
+        #endregion
+
         #region Run all endpoints
         public static int runAll()
         {
