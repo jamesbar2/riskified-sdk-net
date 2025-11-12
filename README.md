@@ -65,6 +65,8 @@ builder.Services.AddRiskified(
 );
 ```
 
+This will automatically bind options from the configuration section, configure a named `HttpClient` for Riskified with proper connection pooling, and register `OrdersGateway` as a singleton.
+
 **3. Inject into your services:**
 
 ```csharp
@@ -83,6 +85,32 @@ public class PaymentService
         return response;
     }
 }
+```
+
+`OrdersGateway` is comfortable being used as a singleton in this manner.
+
+## Configuration Options
+
+### IHttpClientFactory
+
+The SDK supports `IHttpClientFactory` for correct usage of `HttpClient`, as described in [Microsoft's documentation](https://docs.microsoft.com/en-us/dotnet/architecture/microservices/implement-resilient-applications/use-httpclientfactory-to-implement-resilient-http-requests).
+
+When you call `.AddRiskified()`, it automatically configures a named `HttpClient` with proper connection pooling and lifecycle management. If you need to customize your DI structure, you can call `services.AddRiskifiedHttpClient()` separately.
+
+### IOptions Support
+
+The SDK supports configuration from any source via the `IOptions` pattern. You can provide any configuration section to `.AddRiskified()` and options will be automatically bound.
+
+Alternatively, configure options manually:
+
+```csharp
+services.Configure<RiskifiedOptions>(options =>
+{
+    options.MerchantDomain = "your-shop.myshopify.com";
+    options.MerchantAuthenticationToken = "your-token";
+    options.Environment = RiskifiedEnvironment.Production;
+});
+services.AddSingleton<OrdersGateway>();
 ```
 
 ## API Methods
