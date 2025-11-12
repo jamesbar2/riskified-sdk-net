@@ -42,6 +42,9 @@
 
     <!-- ConfigurationManager for cross-platform configuration support -->
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.1" />
+
+    <!-- HttpClient factory for modern HTTP communication -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
