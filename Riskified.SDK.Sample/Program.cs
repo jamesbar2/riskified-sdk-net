@@ -4,7 +4,7 @@ namespace Riskified.SDK.Sample
 {
     static class Program
     {
-        static int Main(string[] args)
+        static async Task<int> Main(string[] args)
         {
             #region logger setup [Optional]
 
@@ -18,6 +18,14 @@ namespace Riskified.SDK.Sample
             # region run all api endpoints
             if (args.Length > 0 && args[0] == "run_all")
                 return OrderTransmissionExample.runAll();
+            #endregion
+
+            # region async example
+            if (args.Length > 0 && args[0] == "async")
+            {
+                await OrderTransmissionExample.SendOrdersToRiskifiedAsyncExample();
+                return 0;
+            }
             #endregion
 
             # region notification example
@@ -37,7 +45,7 @@ namespace Riskified.SDK.Sample
             NotificationServerExample.StopNotificationServer();
 
             return 0;
-            
+
         }
     }
 }
