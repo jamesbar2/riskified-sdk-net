@@ -3,7 +3,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Riskified.SDK.Exceptions;
-using Riskified.SDK.Logging;
+
 using Riskified.SDK.Model;
 using Riskified.SDK.Utils;
 using Riskified.SDK.Model.Internal;
@@ -68,7 +68,7 @@ namespace Riskified.SDK.Notifications
                         string.Format(
                             "Unable to start the HTTP webhook listener on: {0}. Check firewall configuration and make sure the app is running under admin privleges",
                             _localListeningEndpoint);
-                    LoggingServices.Fatal(errorMsg, e);
+                    // Fatal(errorMsg, e);
                     throw new NotifierServerFailedToStartException(errorMsg, e);
                 }
             }
@@ -86,7 +86,7 @@ namespace Riskified.SDK.Notifications
 
                     if (!request.HasEntityBody)
                     {
-                        LoggingServices.Error("Received HTTP notification with no body - shouldn't happen");
+                        // Error("Received HTTP notification with no body - shouldn't happen");
                         continue;
                     }
 
@@ -106,12 +106,12 @@ namespace Riskified.SDK.Notifications
                     }
                     catch (RiskifiedAuthenticationException uae)
                     {
-                        LoggingServices.Error("Notification message authentication failed",uae);
+                        // Error("Notification message authentication failed",uae);
                         responseString = "<HTML><BODY>Merchant couldn't authenticate notification message</BODY></HTML>";
                     }
                     catch(Exception e)
                     {
-                        LoggingServices.Error("Unable to parse notification message. Some or all of the post params are missing or invalid",e);
+                        // Error("Unable to parse notification message. Some or all of the post params are missing or invalid",e);
                         responseString = "<HTML><BODY>Merchant couldn't parse notification message</BODY></HTML>";
                     }
                     
@@ -122,7 +122,7 @@ namespace Riskified.SDK.Notifications
                 }
                 catch (Exception e)
                 {
-                    LoggingServices.Error("An error occured will receiving notification. Specific request was skipped", e);
+                    // Error("An error occured will receiving notification. Specific request was skipped", e);
                     // trying to restart listening - maybe connection was cut shortly
                     if (!_listener.IsListening)
                     {
@@ -136,25 +136,25 @@ namespace Riskified.SDK.Notifications
         {
             int retriesMade = 0;
 
-            LoggingServices.Info("HttpListener is crushed. Waiting 30 seconds before restarting");
+            // Info("HttpListener is crushed. Waiting 30 seconds before restarting");
             while (retriesMade < 3)
             {
                 Thread.Sleep(30000);
                 retriesMade++;
-                LoggingServices.Info("Trying to restart HttpListener for the " + retriesMade + "time");
+                // Info("Trying to restart HttpListener for the " + retriesMade + "time");
                 try
                 {
                     _listener.Start();
                 }
                 catch (Exception e)
                 {
-                    LoggingServices.Error("Restart # "+ retriesMade +" failed",e);
+                    // Error("Restart # "+ retriesMade +" failed",e);
                 }
             
             }
             string errorMsg = "Failed to restart HttpListener after " + retriesMade +
                               " attempts. Notifications will not be received. Please check the connection and configuration of the server";
-            LoggingServices.Fatal(errorMsg);
+            // Fatal(errorMsg);
             throw new NotifierServerFailedToStartException(errorMsg);
         }
     }
