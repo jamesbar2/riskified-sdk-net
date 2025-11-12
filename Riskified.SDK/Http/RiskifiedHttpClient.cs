@@ -5,9 +5,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 using Riskified.SDK.Exceptions;
-using Riskified.SDK.Logging;
 
 namespace Riskified.SDK.Http
 {
@@ -23,10 +24,12 @@ namespace Riskified.SDK.Http
 
         private readonly HttpClient _httpClient;
         private readonly string _assemblyVersion;
+        private readonly ILogger _logger;
 
-        public RiskifiedHttpClient(HttpClient httpClient)
+        public RiskifiedHttpClient(HttpClient httpClient, ILogger logger = null)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            _logger = logger ?? NullLogger.Instance;
             _assemblyVersion = typeof(RiskifiedHttpClient).Assembly.GetName().Version.ToString();
         }
 
@@ -53,13 +56,13 @@ namespace Riskified.SDK.Http
             catch (HttpRequestException ex)
             {
                 const string errorMsg = "HTTP request failed";
-                LoggingServices.Error(errorMsg, ex);
+                _logger.LogError(errorMsg, ex);
                 throw new RiskifiedTransactionException(errorMsg, ex);
             }
             catch (TaskCanceledException ex)
             {
                 const string errorMsg = "HTTP request timed out";
-                LoggingServices.Error(errorMsg, ex);
+                _logger.LogError(errorMsg, ex);
                 throw new RiskifiedTransactionException(errorMsg, ex);
             }
         }
@@ -86,13 +89,13 @@ namespace Riskified.SDK.Http
             catch (HttpRequestException ex)
             {
                 const string errorMsg = "HTTP request failed";
-                LoggingServices.Error(errorMsg, ex);
+                _logger.LogError(errorMsg, ex);
                 throw new RiskifiedTransactionException(errorMsg, ex);
             }
             catch (TaskCanceledException ex)
             {
                 const string errorMsg = "HTTP request timed out";
-                LoggingServices.Error(errorMsg, ex);
+                _logger.LogError(errorMsg, ex);
                 throw new RiskifiedTransactionException(errorMsg, ex);
             }
         }
@@ -195,7 +198,7 @@ namespace Riskified.SDK.Http
                 // If we can't parse the error response, use the default message
             }
 
-            LoggingServices.Error(errorMessage);
+            _logger.LogError(errorMessage);
             throw new RiskifiedTransactionException(errorMessage);
         }
 

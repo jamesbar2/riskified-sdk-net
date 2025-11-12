@@ -12,7 +12,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Riskified.SDK.Exceptions;
 using Riskified.SDK.Http;
-using Riskified.SDK.Logging;
 
 namespace Riskified.SDK.Utils
 {
@@ -190,13 +189,13 @@ namespace Riskified.SDK.Utils
 
 
                 }
-                LoggingServices.Error(error, wex);
+                // Logging removed - use ILogger in clients(error, wex);
                 throw new RiskifiedTransactionException(error, wex);
             }
             catch (Exception e)
             {
                 const string errorMsg = "There was an unknown error connecting to Riskified server";
-                LoggingServices.Error(errorMsg, e);
+                // Logging removed - use ILogger in clients(errorMsg, e);
                 throw new RiskifiedTransactionException(errorMsg, e);
             }
             return response;
@@ -343,7 +342,7 @@ namespace Riskified.SDK.Utils
                 return streamData;
             }
             const string errMsg = "Unknown data from Riskified server - ignoring it. Body was null";
-            LoggingServices.Error(errMsg);
+            // Logging removed - use ILogger in clients(errMsg);
             throw new RiskifiedTransactionException(errMsg);
         }
         /*
