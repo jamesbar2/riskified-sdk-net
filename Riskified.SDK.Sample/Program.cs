@@ -33,7 +33,6 @@
 
             # region notification example
 
-            NotificationServerExample.ReceiveNotificationsExample();
 
             #endregion
 
@@ -45,7 +44,6 @@
 
 
             // make sure to shut down the notifications server when done
-            NotificationServerExample.StopNotificationServer();
 
             return 0;
 

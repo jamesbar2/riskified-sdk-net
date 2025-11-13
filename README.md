@@ -212,3 +212,116 @@ All existing synchronous methods still work. Async methods are additive.
 - **MODERNIZATION_ROADMAP.md** - Modernization plan and progress
 - **Riskified.SDK.Tests/README.md** - Testing guide
 - **Riskified.SDK.Tests/USER_SECRETS_DEMO.md** - Secure credentials setup
+
+## Webhook Handling
+
+Riskified sends fraud decisions back to your application via webhooks. Use the `WebhookValidator` utility to validate and parse webhooks in your ASP.NET Core application.
+
+### ASP.NET Core Minimal API
+
+```csharp
+using Riskified.SDK.Webhooks;
+
+app.MapPost("/webhooks/riskified", async (HttpRequest request) =>
+{
+    try
+    {
+        var notification = await WebhookValidator.ValidateAndParseAsync(
+            request,
+            authToken: configuration["Riskified:MerchantAuthenticationToken"],
+            expectedShopDomain: configuration["Riskified:MerchantDomain"]
+        );
+
+        // Handle the notification
+        Console.WriteLine($"Order {notification.Id}: {notification.Status}");
+        Console.WriteLine($"Description: {notification.Description}");
+
+        // Process based on status
+        if (notification.Status == "approved")
+        {
+            // Fulfill order
+        }
+        else if (notification.Status == "declined")
+        {
+            // Cancel order
+        }
+
+        return Results.Ok("Webhook received");
+    }
+    catch (RiskifiedAuthenticationException ex)
+    {
+        return Results.Unauthorized();
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(ex.Message);
+    }
+});
+```
+
+### ASP.NET Core Controller
+
+```csharp
+using Riskified.SDK.Webhooks;
+
+[ApiController]
+[Route("webhooks")]
+public class WebhookController : ControllerBase
+{
+    private readonly IConfiguration _configuration;
+
+    public WebhookController(IConfiguration configuration)
+    {
+        _configuration = configuration;
+    }
+
+    [HttpPost("riskified")]
+    public async Task<IActionResult> HandleRiskifiedWebhook()
+    {
+        try
+        {
+            var notification = await WebhookValidator.ValidateAndParseAsync(
+                Request,
+                authToken: _configuration["Riskified:MerchantAuthenticationToken"],
+                expectedShopDomain: _configuration["Riskified:MerchantDomain"]
+            );
+
+            // Process notification
+            await ProcessNotification(notification);
+
+            return Ok();
+        }
+        catch (RiskifiedAuthenticationException)
+        {
+            return Unauthorized();
+        }
+    }
+
+    private async Task ProcessNotification(OrderNotification notification)
+    {
+        // Your business logic here
+    }
+}
+```
+
+### HMAC Validation Only
+
+If you need manual HMAC validation:
+
+```csharp
+using Riskified.SDK.Webhooks;
+
+// Validate HMAC signature
+var body = await ReadBodyAsync(request);
+var providedHmac = request.Headers["X-RISKIFIED-HMAC-SHA256"];
+var isValid = WebhookValidator.ValidateHmac(
+    body,
+    providedHmac,
+    authToken: "your-auth-token"
+);
+
+if (!isValid)
+{
+    return Results.Unauthorized();
+}
+```

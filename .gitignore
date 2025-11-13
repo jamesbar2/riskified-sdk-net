@@ -224,3 +224,16 @@ Riskified.SDK.Sample/App.config
 Riskified.SDK.Sample/App.config
 Riskified.SDK.Sample/App.config
 *.config
+
+# Test Coverage Files
+coverage.cobertura.xml
+coverage.json
+TestResults/
+
+# IDE
+.idea/
+.vscode/
+*.DotSettings.user
+
+# User Secrets  
+testsettings.Local.json

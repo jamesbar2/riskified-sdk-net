@@ -38,6 +38,7 @@
 
   <ItemGroup>
     <!-- Updated Newtonsoft.Json to latest stable -->
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 
     <!-- ConfigurationManager for cross-platform configuration support -->
