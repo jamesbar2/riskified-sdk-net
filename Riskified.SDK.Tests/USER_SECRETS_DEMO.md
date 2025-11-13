@@ -114,14 +114,3 @@ cat ~/.microsoft/usersecrets/riskified-sdk-tests-a1b2c3d4/secrets.json
 # Windows
 type %APPDATA%\Microsoft\UserSecrets\riskified-sdk-tests-a1b2c3d4\secrets.json
 ```
-
-## For Auctane Pay Integration
-
-When you're ready to test against Riskified Sandbox:
-
-1. Get Sandbox credentials from Riskified
-2. Set them using User Secrets (above)
-3. Remove `Skip` attribute from integration tests in `OrdersGatewayTests.cs`
-4. Run: `dotnet test`
-
-That's it! Your credentials stay secure and never touch the repository.
