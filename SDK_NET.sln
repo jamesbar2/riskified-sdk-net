@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Riskified.SDK.Sample", "Ris
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Riskified.SDK", "Riskified.SDK\Riskified.SDK.csproj", "{1BD71C22-04AD-4520-A331-C6B3E3BB7793}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Riskified.SDK.Tests", "Riskified.SDK.Tests\Riskified.SDK.Tests.csproj", "{B46F686D-3B1D-41F3-9940-08FE4DFB91B7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{1BD71C22-04AD-4520-A331-C6B3E3BB7793}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1BD71C22-04AD-4520-A331-C6B3E3BB7793}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1BD71C22-04AD-4520-A331-C6B3E3BB7793}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B46F686D-3B1D-41F3-9940-08FE4DFB91B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B46F686D-3B1D-41F3-9940-08FE4DFB91B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B46F686D-3B1D-41F3-9940-08FE4DFB91B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B46F686D-3B1D-41F3-9940-08FE4DFB91B7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
