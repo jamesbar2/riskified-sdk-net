@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Configuration;
 using System.Threading.Tasks;
 using Riskified.SDK.Model;
 using Riskified.SDK.Notifications;
@@ -12,7 +11,7 @@ namespace Riskified.SDK.Sample
 
         public static void ReceiveNotificationsExample()
         {
-            string merchantNotificationsWebhook = ConfigurationManager.AppSettings["NotificationsWebhookUrl"];
+            string merchantNotificationsWebhook = ConfigurationHelper.GetRiskifiedSetting("NotificationsWebhookUrl");
             
             Console.WriteLine("Local Notifications server url set in the config file: " + merchantNotificationsWebhook);
             Console.WriteLine("'s' to start the notifications server, else to skip all");
@@ -41,8 +40,8 @@ namespace Riskified.SDK.Sample
         
         private static void StartServer(string merchantNotificationsWebhook)
         {
-            string domain = ConfigurationManager.AppSettings["MerchantDomain"];
-            string authToken = ConfigurationManager.AppSettings["MerchantAuthenticationToken"];
+            string domain = ConfigurationHelper.GetRiskifiedSetting("MerchantDomain");
+            string authToken = ConfigurationHelper.GetRiskifiedSetting("MerchantAuthenticationToken");
 
             // setup of a notification server listening to incoming notification from riskified
             // the webhook is the url on the local server which the httpServer will be listening at

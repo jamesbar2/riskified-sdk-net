@@ -1,0 +1,7 @@
+{
+  "Riskified": {
+    "MerchantDomain": "your-shop-domain.myshopify.com",
+    "MerchantAuthenticationToken": "your-auth-token-here",
+    "RiskifiedEnvironment": "Sandbox"
+  }
+}
